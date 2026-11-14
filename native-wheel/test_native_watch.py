@@ -207,6 +207,8 @@ for v in range(6):
     put(c+0x13c,'<B',1);call('_AGBattleAwait',ENV,c,v,1,0);assert waitCalls==before_wait+1
     put(c+0x13c,'<B',1);waitStop=True;call('_AGBattleAwait',ENV,c,v,1,0)
     assert waitCalls==before_wait+2 and get(c+0x13c,'<B')==1
+    # A late callback after cancel must not fall into participant waiting.
+    call('_AGBattleAwait',ENV,c,v,1,0);assert waitCalls==before_wait+2
     put(c+0x13c,'<B',0);waitStop=False;stillWatching=True
     busy=True;assert call('_AGNativeWatchTryEnd',ENV,v)==0
     assert get(c+0xb8,'<Q')==get(a+0xe8,'<Q'),'Busy cancellation changed the scene'

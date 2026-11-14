@@ -117,7 +117,7 @@ for v in range(6 if __name__=='__main__' else 0):
  put(canvas+0x108,'<Q',123);call('_AGInventoryOrder',E,v,canvas,screen,1);assert get(screen+0x70,'<Q')==display
  put(canvas+0x108,'<Q',0);call('_AGInventoryOrder',E,v,canvas,screen,1);assert displayed(screen)==[105,70001,7,120]
  assert ids(nextvec)==[70001,7,105,120]
- assert get(screen+0x90,'<Q')==fresh[2]and get(fresh[2]+0x90,'<q')==1
+ assert get(screen+0x90,'<Q')==fresh[0]and get(fresh[2]+0x90,'<q')==1,'Keep selection when a new item is promoted'
  # Selected recipe must resolve into the next server vector at action time.
  put(screen+0xc8,'<i',3);put(screen+0x90,'<Q',fresh[3]);newpaper=item(120,1);replacement=vector([fresh[0],newpaper,fresh[2],fresh[1]]);put(pool+0xa8,'<Q',replacement)
  assert call('_AGInventoryResolve',E,fresh[3])==newpaper

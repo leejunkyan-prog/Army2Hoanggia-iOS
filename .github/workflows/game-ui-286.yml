@@ -23,11 +23,14 @@ jobs:
           native-wheel/build/device-qa/bin/pip install --quiet lief unicorn
           py=native-wheel/build/device-qa/bin/python
           bin=native-wheel/build/QA/AGWheel.framework/AGWheel
-          "$py" native-wheel/test_native_watch.py "$bin" | tee native-wheel/build/watch-286.txt
-          "$py" native-wheel/test_inventory_device282.py "$bin" | tee native-wheel/build/inventory-286.txt
-          "$py" native-wheel/test_recipe_reentry286.py "$bin" | tee native-wheel/build/recipe-286.txt
-          "$py" native-wheel/test_snapshot_flash286.py "$bin" | tee native-wheel/build/flash-286.txt
+          status=0
+          "$py" native-wheel/test_native_watch.py "$bin" 2>&1 | tee native-wheel/build/watch-286.txt || status=1
+          "$py" native-wheel/test_inventory_device282.py "$bin" 2>&1 | tee native-wheel/build/inventory-286.txt || status=1
+          "$py" native-wheel/test_recipe_reentry286.py "$bin" 2>&1 | tee native-wheel/build/recipe-286.txt || status=1
+          "$py" native-wheel/test_snapshot_flash286.py "$bin" 2>&1 | tee native-wheel/build/flash-286.txt || status=1
+          exit "$status"
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: Army2HoangGia-Build286-framework
           path: |
