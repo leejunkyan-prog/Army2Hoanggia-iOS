@@ -1,0 +1,43 @@
+{
+  "passed": true,
+  "native_initializers": [
+    {
+      "pb": 1,
+      "host": "180.93.120.67",
+      "port": 19149,
+      "url": "http://180.93.120.67:18080/server.txt"
+    },
+    {
+      "pb": 2,
+      "host": "180.93.120.67",
+      "port": 19149,
+      "url": "http://180.93.120.67:18080/server.txt"
+    },
+    {
+      "pb": 3,
+      "host": "180.93.120.67",
+      "port": 19149,
+      "url": "http://180.93.120.67:18080/server.txt"
+    },
+    {
+      "pb": 4,
+      "host": "180.93.120.67",
+      "port": 19149,
+      "url": "http://180.93.120.67:18080/server.txt"
+    },
+    {
+      "pb": 5,
+      "host": "180.93.120.67",
+      "port": 19149,
+      "url": "http://180.93.120.67:18080/server.txt"
+    },
+    {
+      "pb": 6,
+      "host": "180.93.120.67",
+      "port": 19149,
+      "url": "http://180.93.120.67:18080/server.txt"
+    }
+  ],
+  "boundary_dependencies": "JVM string allocation and non-network settings are mocked",
+  "live_server_login_tested": false
+}

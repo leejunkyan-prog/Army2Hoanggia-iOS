@@ -1,0 +1,27 @@
+name: Deliver Army2 iOS 290 JAR server
+on:
+  workflow_dispatch:
+  push:
+    branches: [delivery/ios-290-jar-server]
+permissions:
+  contents: read
+concurrency:
+  group: deliver-army2-ios-290
+  cancel-in-progress: false
+jobs:
+  ipa:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Reassemble and verify the exact packaged IPA
+        run: python3 delivery/build290/assemble.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Army2HoangGia-2.4.1-Build290-JarServer-unsigned
+          path: ipa-output/*
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 14

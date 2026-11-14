@@ -1,0 +1,47 @@
+{
+  "ipa": "Army2HoangGia-2.4.1-Build290-JarServer-unsigned.ipa",
+  "ipa_sha256": "097cca0d082dabdfca0b88039e32e25e9437b4f067ccadfe3e2bed942d149e7f",
+  "ipa_bytes": 27596613,
+  "source_ipa_sha256": "5f43445cfd98effa8b8b0ed41dfbf788a508a7407cd95365f45e21c43b6b545f",
+  "native_sha256": "889afdfc35bdbb47f7f3abcd2327c97f631702158d2670f6c79c37b6d2485a06",
+  "source_jar_sha256": "b5ed7f1c96cbf1dc3864c3e575a5c3643332b0f8536d9f65eac071e30c6b7796",
+  "host": "180.93.120.67",
+  "game_port": 19149,
+  "server_list_url": "http://180.93.120.67:18080/server.txt",
+  "build": 290,
+  "version": "2.4.1",
+  "pb_variants": 6,
+  "framework_unchanged_from_build289": true,
+  "framework_sha256": "cf3cfa879b7e36ff86ac0916affb7cdb76ee6922132d9d9ffa5aaa3507d859b1",
+  "changed_zip_entries": [
+    "Payload/Army2Hoanggia.app/Army2Hoanggia",
+    "Payload/Army2Hoanggia.app/Info.plist"
+  ],
+  "native_edits": [
+    {
+      "offset": 21360992,
+      "before": "3138302e39332e3139352e3232380000",
+      "after": "3138302e39332e3132302e3637000000"
+    },
+    {
+      "offset": 5702408,
+      "before": "c3018052",
+      "after": "a3018052"
+    },
+    {
+      "offset": 21361040,
+      "before": "687474703a2f2f3138302e39332e3139352e3232383a31383038302f7365727665722e7478740000",
+      "after": "687474703a2f2f3138302e39332e3132302e36373a31383038302f7365727665722e747874000000"
+    },
+    {
+      "offset": 5702528,
+      "before": "c3048052",
+      "after": "a3048052"
+    }
+  ],
+  "zip_crc_valid": true,
+  "zip_paths_unique": true,
+  "requires_signing": true,
+  "physical_device_tested": false,
+  "live_server_login_tested": false
+}
