@@ -89,8 +89,15 @@ void AGInventoryOrder(void *env,int v,uint8_t *canvas,uint8_t *screen,int active
         *state=(InventoryState){0};
         return;
     }
-    /* Menus, amount entry, craft progress and result dialogs keep their target. */
-    if(!env||!canvas||!screen||*(void **)(canvas+0x108)||screen[0xd4]||screen[0xd5])return;
+    if(!env||!canvas||!screen)return;
+    /* Native C6.n rebinds +0x70 to the server vector even while a dialog is
+       open. Restore the displayed order BEFORE deferring a rebuild; the
+       callback's v() uses this same index several times during one tap. */
+    if(state->open&&state->screen==(uintptr_t)screen&&state->display)
+        *(void **)(screen+0x70)=state->display;
+    /* Freeze positions while menus, amount entry and craft/result dialogs
+       are open. Resolve refreshed server handles at action time below. */
+    if(*(void **)(canvas+0x108)||screen[0xd4]||screen[0xd5])return;
     /* The render callback must never wait for the server Vector's Java
        monitor: its owner may itself be waiting for a render-thread task.
        Sort a private display vector and leave the server collection intact. */
@@ -159,7 +166,7 @@ void AGInventoryOrder(void *env,int v,uint8_t *canvas,uint8_t *screen,int active
 /* Rebind in place before the original callback calls v() again. The recipe
    child and its parent are one chest session, including while a menu is up. */
 void *AGInventoryResolve(void *env,void *opaque){
-    if(!env||!opaque)return opaque;uint8_t *item=opaque;uint64_t wanted=key(item);
+    if(!env||!opaque)return opaque;
     for(int v=0;v<6;v++){
         uint8_t *canvas=*(uint8_t **)(base()+AGNotesMaps[v].canvas);if(!canvas)continue;
         uint8_t *screen=*(uint8_t **)(canvas+0xb8),*vec=pool(v);
@@ -171,9 +178,23 @@ void *AGInventoryResolve(void *env,void *opaque){
         int index=*(int *)(screen+0xc8),count=display?*(int *)(display+0x24):0;
         if(!items||index<0||index>=count||count>INV_LIMIT||count>*(int *)(items+0x10))continue;
         uint8_t **slot=(uint8_t **)(items+0x18+index*8);
+        if(!*slot||*slot!=opaque)continue;
+        InventoryState *state=&inventories[v];
+        if(state->open&&state->screen==(uintptr_t)screen&&state->display){
+            /* Also repair an input callback between native rebind and the
+               next render tick. Identify the PB by object identity before
+               replacing the source-indexed item with the displayed one. */
+            uint8_t *shown=elements(state->display);
+            int shownCount=*(int *)((uint8_t *)state->display+0x24);
+            if(!shown||index>=shownCount||shownCount>INV_LIMIT||
+               shownCount>*(int *)(shown+0x10))continue;
+            slot=(uint8_t **)(shown+0x18+index*8);
+            *(void **)(screen+0x70)=state->display;
+        }
+        if(!*slot)continue;
+        uint64_t wanted=key(*slot);
         /* All six PBs retain their own chest. An ID match in another PB
            must never substitute that PB's object into this callback. */
-        if(!*slot||*slot!=opaque||key(*slot)!=wanted)continue;
         uint8_t *data=elements(vec);int n=*(int *)(vec+0x24);
         if(!data||n<0||n>INV_LIMIT||n>*(int *)(data+0x10))continue;
         uint8_t **rows=(uint8_t **)(data+0x18);
@@ -194,4 +215,5 @@ int AGInventoryGeometry(int v,int *out){
     int values[]={width,x,y,w,h,cols,cell};memcpy(out,values,sizeof values);return 1;
 }
 #endif
+
 

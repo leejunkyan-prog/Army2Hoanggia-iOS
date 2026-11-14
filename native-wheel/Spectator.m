@@ -20,7 +20,7 @@ typedef NS_ENUM(int, WatchReceive) { PassToGame, Consumed, Snapshot, MatchEnded,
 @property(nonatomic,copy) NSString *question;
 @property(nonatomic) WatchPhase phase;
 @property(nonatomic) WatchAction action;
-@property(nonatomic) NSTimeInterval deadline, presentAfter;
+@property(nonatomic) NSTimeInterval deadline;
 @property(nonatomic,strong) UIWindow *window;
 @property(nonatomic,weak) UIWindow *previous;
 @property(nonatomic,strong) WKWebView *web;
@@ -281,15 +281,15 @@ int AGViewerReceive(void *env,void *message,int variant){
         // Texture creation may hand off to the GDX render thread. Never hold
         // the UI/state monitor while waiting for the original game routines.
         if(result==MatchEnded){
-            @synchronized(ArmyWatch.class){if(current==owner)finish(owner);}
+            @synchronized(ArmyWatch.class){if(current==owner){owner.endReceived=YES;finish(owner);}}
         }else if(result==LiveBeforeReady){
             int cmd=*(const int8_t *)((const uint8_t *)message+0x30);
+            NSData *frame=readBody(message);
+            if(frame)AGNativeWatchObserve(variant,cmd,frame.bytes,frame.length);
             if(!AGNativeWatchFinishSnapshot(env,variant)){
                 @synchronized(ArmyWatch.class){if(current==owner)leave(owner);}
                 return 1;
             }
-            NSData *frame=readBody(message);
-            if(frame)AGNativeWatchObserve(variant,cmd,frame.bytes,frame.length);
             @synchronized(ArmyWatch.class){
                 if(current!=owner||owner.phase!=InMatch)return 1;
                 watchReady(owner);
@@ -311,7 +311,6 @@ int AGViewerReceive(void *env,void *message,int variant){
                     if(!ok)leave(owner);
                     else if(p[3]==5&&owner.phase==InMatch){
                         owner.nativeStarted=YES;
-                        owner.presentAfter=now()+.4;
                     }
                     else if(p[3]==7)watchReady(owner);
                 }
@@ -344,7 +343,7 @@ void AGViewerTick(void *env,int variant) {
     if(wait)AGViewerDismissWait(variant,wait);
     if(!atomic_load(&active))return;
     @autoreleasepool {
-        ArmyWatch *w;WatchAction action;uintptr_t connection;BOOL present;
+        ArmyWatch *w;WatchAction action;uintptr_t connection;
         @synchronized(ArmyWatch.class){
             w=current;if(!w||w.variant!=variant)return;
             BOOL aux=AGNativeWatchAux(variant);
@@ -362,10 +361,6 @@ void AGViewerTick(void *env,int variant) {
                     [w.web evaluateJavaScript:[NSString stringWithFormat:@"watchAngle(%d)",angle] completionHandler:nil];
                 });
             }
-            present=w.phase==InMatch&&w.nativeStarted&&!w.snapshotReceived&&now()>=w.presentAfter;
-        }
-        if(present&&AGNativeWatchTryFinishSnapshot(env,variant)){
-            @synchronized(ArmyWatch.class){if(current==w)watchReady(w);}
         }
         connection=AGViewerConnection(env,variant);
         @synchronized(ArmyWatch.class){
@@ -543,4 +538,5 @@ void AGViewerTick(void *env,int variant) {
     }];
 }
 @end
+
 

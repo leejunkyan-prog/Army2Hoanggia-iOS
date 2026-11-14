@@ -237,10 +237,14 @@ for v in range(6):
         if cmd==-102 and p[3] in (3,4,5):assert packet(v,p)==1
         elif cmd in (8,24):observe(v,cmd,p)
     busy=True;assert not call('_AGNativeWatchTryFinishSnapshot',ENV,v)
-    busy=False;assert call('_AGNativeWatchTryFinishSnapshot',ENV,v)
+    busy=False;assert not call('_AGNativeWatchTryFinishSnapshot',ENV,v)
+    # Only a real live packet can stand in for an omitted SP7 barrier.
+    observe(v,21,bytes.fromhex('0001d2017c'))
+    assert call('_AGNativeWatchTryFinishSnapshot',ENV,v)
     assert call('_AGNativeWatchRunning',v) and get(c+0xb8,'<Q')==get(a+0xe8,'<Q')
     call('_AGNativeWatchEnd',ENV,v)
 assert len(started)==len(shown)==len(restored)==12
 assert all(n==0 for n in pins.values()),pins
 print('PASS compiled iPhone ARM64: six variants, snapshot-only presentation, map/HP/positions, independent destructible terrain, camera, nonblocking leave, lost-notify recovery and reopening')
+
 

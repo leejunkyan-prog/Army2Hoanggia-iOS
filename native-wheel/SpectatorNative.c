@@ -37,7 +37,7 @@ static pthread_mutex_t watchLock=PTHREAD_MUTEX_INITIALIZER;
 extern int AGWheelGuard(void *,int (*)(void *,void *),void *,void *);
 typedef struct {uint8_t *encoded;void *image;int size,width,height;uint64_t hash;} TileImage;
 typedef struct {
-    int active,started,prepared,v,map,width,height,bricks,next,id,x,y,solid,total,received;
+    int active,started,prepared,snapshotComplete,v,map,width,height,bricks,next,id,x,y,solid,total,received;
     int roster,turn,first,seconds,oldWidth,oldHeight;
     int oldCamera[6];
     uint8_t *bytes,*back,*arena,*oldMap,*oldTiles,*oldBackdrop,*oldRoster;
@@ -264,7 +264,12 @@ static int restore(void *e,void *opaque){
         ((void (*)(void *,void *))(base()+AGSpectatorMaps[v].restore))(e,w->back);
         ((void (*)(void *))(base()+AGBossNativeMaps[v].resetInput))(e);
     }
-    if(canvas)canvas[0x13c]=w->oldFlash;
+    if(canvas){
+        canvas[0x13c]=w->oldFlash;
+        /* A force/message/result dialog opened while watching must not
+           cover the area list after the server's end-of-match packet. */
+        if(w->started)*(void **)(canvas+0x108)=NULL;
+    }
     if(a){
         a[0x266]=w->oldLocal;a[0x265]=w->oldMode;*(void **)(a+0xc8)=w->oldMap;
         for(size_t i=0;i<sizeof arenaStateOffsets;i++)a[0x260+arenaStateOffsets[i]]=w->oldArenaState[i];
@@ -325,10 +330,14 @@ static int resetClock(void *e,void *opaque){
     return 1;
 }
 static int finishSnapshot(void *e,Watch *w){
-    if(!w->started)return 0;
+    if(!w->started||!w->snapshotComplete)return 0;
     Clock clock={w,w->seconds};
     if(guard(e,resetClock,&clock)<=0)return 0;
     if(!AGNativeWatchRunning(w->v)){
+        /* Snapshot HP/status is state, not a participant flash animation.
+           Clear its leftover flag only after the protocol barrier. */
+        uint8_t *canvas=global(AGNotesMaps[w->v].canvas);
+        if(canvas)canvas[0x13c]=0;
         if(w->turn>=0)centerActor(w,w->turn);
         if(guard(e,show,w)<=0)return 0;
         atomic_store(&running[w->v],1);
@@ -367,7 +376,7 @@ static int packetNative(void *e,int v,const uint8_t *p,size_t n){
     }
     if(p[3]==7){
         if(n!=5||!w->started)return 0;
-        w->seconds=p[4];
+        w->seconds=p[4];w->snapshotComplete=1;
         return finishSnapshot(e,w);
     }
     return 0;
@@ -446,6 +455,11 @@ void AGNativeWatchObserve(int v,int cmd,const uint8_t *p,size_t n){
     pthread_mutex_lock(&watchLock);
     Watch *w=&watches[v];
     if(w->active&&cmd==8&&!w->started&&n>=42)w->roster=1;
+    /* SP7 is the normal end-of-snapshot barrier. Legacy servers can omit
+       it, but a complete live move/shot also proves replay has ended.
+       Elapsed render time cannot establish this ordering. */
+    if(w->started&&((cmd==21&&n==5)||((cmd==22||cmd==84)&&n>=10)))
+        w->snapshotComplete=1;
     if(w->started&&cmd==24&&n>=1&&p[0]<127){
         w->turn=p[0];
         if(!AGNativeWatchRunning(v)&&n==2)w->seconds=p[1];
@@ -459,4 +473,5 @@ void AGNativeWatchOption(int v,int option){
 }
 void AGNativeWatchTick(void *e,int v){if(pthread_mutex_trylock(&watchLock))return;tickNative(e,v);pthread_mutex_unlock(&watchLock);}
 #endif
+
 

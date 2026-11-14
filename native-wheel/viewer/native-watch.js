@@ -94,7 +94,6 @@ ui.start(()=>{
   if(nativeMenu)return;
   ui.text('Đang xem',5,15,{max:100});
   if(angle>=0){
-   ui.rect(133,27,54,11,'#41dce9');
    ui.text('Góc: '+angle,160,27,{align:'center',color:'#fff',outline:true,max:54});
   }
   if(free&&!menu)cameraControls();
@@ -133,3 +132,4 @@ ui.canvas.addEventListener('pointermove',e=>{
 });
 for(const type of ['pointerup','pointercancel','lostpointercapture'])ui.canvas.addEventListener(type,stopDrag);
 send('ready');
+
