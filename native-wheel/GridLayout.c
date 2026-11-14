@@ -6,6 +6,7 @@
 #include "Inventory.h"
 static int larger(int a,int b){return a>b?a:b;}
 static int smaller(int a,int b){return a<b?a:b;}
+extern int AGWheelGuard(void *,int (*)(void *,void *),void *,void *);
 typedef struct {int w,h,columns,cell,decor;} Grid;
 static Grid dimensions(uint8_t *canvas){
     int w=canvas?*(int *)(canvas+0x130):432,h=canvas?*(int *)(canvas+0x128):640;
@@ -68,6 +69,21 @@ case GM_BAR1:return g.h-63;case GM_BAR2:return g.h-43;case GM_BAR3:return g.h-23
 case GM_TEXT1:return g.h-62;case GM_TEXT2:return g.h-42;case GM_TEXT3:return g.h-22;
 case GM_HIGHLIGHT:return (g.cell-16)/2;case GM_NEG_HIGHLIGHT:return -(g.cell-16)/2;
 default:return 0;}}
+
+typedef struct {uint8_t *graphics;int width,height;} InventoryClip;
+static int resetInventoryClip(void *env,void *opaque){
+    InventoryClip *clip=opaque;
+    uintptr_t base=(uintptr_t)_dyld_get_image_header(0);
+    uint8_t *graphics=clip->graphics;
+    if(graphics[0x50]){
+        ((void (*)(void *,void *,int,int))(base+0x1c619c))
+            (env,graphics,-*(int *)(graphics+0x48),-*(int *)(graphics+0x4c));
+    }
+    ((void (*)(void *,void *,int,int,int,int))(base+0x1c6190))
+        (env,graphics,0,0,clip->width,clip->height);
+    return 1;
+}
+
 // Every call replaces one audited native instruction. No runtime code writes.
 __attribute__((visibility("default"))) void AGGridAdjust(uint64_t *r,uintptr_t pc){
     uintptr_t base=(uintptr_t)_dyld_get_image_header(0);uint32_t off=(uint32_t)(pc-base);
@@ -76,6 +92,13 @@ __attribute__((visibility("default"))) void AGGridAdjust(uint64_t *r,uintptr_t p
     if(lo>=sizeof(gridSites)/sizeof(gridSites[0])||gridSites[lo].site!=off)return;
     AGGridSite s=gridSites[lo];uint8_t *canvas=*(uint8_t **)(base+AGNotesMaps[s.variant].canvas);Grid g=dimensions(canvas);
     if(s.metric==GM_LAYOUT){layout(base,s.variant,s.kind,(uint8_t *)r[1],g,canvas?*(int *)(canvas+0x130):432);return;}
+    if(s.kind==0&&s.metric==GM_HALF_INNER&&canvas&&r[19]&&r[20]){
+        // The chest paints over its parent screen. Reset the parent's clip
+        // before drawing the chest, just as the native painter does for its footer.
+        InventoryClip clip={(uint8_t *)r[20],*(int *)(canvas+0x130),*(int *)(canvas+0x128)};
+        if(clip.width>=160&&clip.width<=4096&&clip.height>=160&&clip.height<=4096)
+            AGWheelGuard((void *)r[19],resetInventoryClip,&clip,(void *)(base+0x1300d54));
+    }
     uint32_t value=(uint32_t)metric(g,s.metric),word=s.word;int rd=word&31,rn=(word>>5)&31;
     if((word&0xffc00000)==0xb9000000){*(uint32_t *)(r[rn]+((word>>10)&4095)*4)=value;return;}
     if((word&0x7f000000)==0x11000000)value=(uint32_t)r[rn]+value;

@@ -3,7 +3,11 @@
 #include <stdint.h>
 int AGNativeWatchAvailable(void);
 int AGNativeWatchFree(int variant);
+int AGNativeWatchRunning(int variant);
+int AGNativeWatchAngle(int variant);
 int AGNativeWatchPacket(void *env,int variant,const uint8_t *data,size_t length);
+int AGNativeWatchFinishSnapshot(void *env,int variant);
+int AGNativeWatchTryFinishSnapshot(void *env,int variant);
 void AGNativeWatchObserve(int variant,int command,const uint8_t *data,size_t length);
 void AGNativeWatchOption(int variant,int option);
 int AGNativeWatchAux(int variant);
@@ -11,5 +15,8 @@ void AGNativeWatchSwitch(void *env,int variant);
 void AGNativeWatchEnd(void *env,int variant);
 int AGNativeWatchTryEnd(void *env,int variant);
 void AGNativeWatchCamera(int variant,int kind,int code);
+int AGNativeWatchToggleCamera(int variant);
+void AGNativeWatchClearCameraKeys(int variant);
+void AGNativeWatchNudgeCamera(int variant,int code);
 void AGNativeWatchTick(void *env,int variant);
 int AGViewerActive(int variant);

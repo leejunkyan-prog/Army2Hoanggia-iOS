@@ -17,9 +17,10 @@ jobs:
       - name: Compile and verify iPhone framework
         run: bash native-wheel/build_284.sh
       - name: Test compiled ARM64 snapshot and inventory bridges
+        shell: bash
         run: |
           python3 -m venv native-wheel/build/device-qa
-          native-wheel/build/device-qa/bin/pip install --quiet lief unicorn
+          native-wheel/build/device-qa/bin/pip install --quiet lief==0.17.6 unicorn==2.1.4
           py=native-wheel/build/device-qa/bin/python
           bin=native-wheel/build/QA/AGWheel.framework/AGWheel
           "$py" native-wheel/test_native_watch.py "$bin" | tee native-wheel/build/watch-284.txt

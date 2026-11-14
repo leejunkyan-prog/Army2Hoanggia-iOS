@@ -31,6 +31,9 @@ for b in m.dyld_info.bindings:
 def reg(i):return u.reg_read(UC_ARM64_REG_X0+i)
 def ret(v=0):u.reg_write(UC_ARM64_REG_X0,v&((1<<64)-1));u.reg_write(UC_ARM64_REG_PC,u.reg_read(UC_ARM64_REG_LR))
 now=100.0
+stillWatching=True
+waitCalls=0
+waitStop=False
 cursor=HEAP+0x10000
 def alloc(n):
     global cursor
@@ -45,20 +48,28 @@ mapClass=[0x20799f0,0x20a9910,0x20d7610,0x2105300,0x2132ff0,0x2160ce0]
 tileNew=[0x538708,0x624e90,0x709b54,0x7ee818,0x8d34dc,0x9b81a0]
 tileInit=[0x539224,0x6257f4,0x70a4b8,0x7ef17c,0x8d3e40,0x9b8b04]
 reset=[0x50c264,0x5fa2fc,0x6defc0,0x7c3c84,0x8a8948,0x98d60c]
+services=[0x5010d4,0x5ef70c,0x6d43d0,0x7b9094,0x89dd58,0x982a1c]
+serviceObjects=[]
 native={};objects=[];pins={};tileCount=0;started=[];shown=[];restored=[];lock=0;busy=False;decodes=0;tilePixels=[]
 for v,mp in enumerate(maps):
     a=alloc(0x300);c=alloc(0x200);g=alloc(0x100);cam=alloc(0x100);back=alloc(0x100);oldMap=alloc(0x30);oldTiles=alloc(0x50)
+    oldBackdrop=alloc(0x30);put(g+0xc8,'<Q',oldBackdrop);put(a+0x261,'<B',1)
     for address,obj in ((arena[v],a),(canvas[v],c),(mapClass[v],g),(mp['cameraClass'],cam)):put(MAIN+address,'<Q',obj)
     put(c+0xb8,'<Q',back);put(c+0x130,'<i',450);put(c+0x128,'<i',650)
     put(a+0xc8,'<Q',oldMap);put(a+0x266,'<B',7);put(g+0xb8,'<Q',oldTiles);put(g+0xd8,'<ii',800,600)
     actors=[0x207f060,0x20aec70,0x20dc970,0x210a660,0x2138350,0x2166040]
     players=alloc(0x100);put(MAIN+actors[v],'<Q',players)
+    roster=alloc(0x18+100*8);put(roster+0x10,'<i',100);put(players+0xa0,'<Q',roster)
     objects.append((a,c,g,cam,back,oldMap,oldTiles))
+    service=alloc(0x30);put(service+0x10,'<Q',alloc(0x20))
+    native[MAIN+services[v]]=('service',v)
+    serviceObjects.append(service)
     for k in ('arenaNew','arenaInit','mapNew','mapInit','start','show','restore','clockSet','clockReset'):native[MAIN+mp[k]]=(k,v)
     native[MAIN+tileNew[v]]=('tileNew',v);native[MAIN+tileInit[v]]=('tileInit',v);native[MAIN+reset[v]]=('reset',v)
 def hook(uc,pc,size,_):
-    global lock,tileCount,decodes
+    global lock,tileCount,decodes,stillWatching,waitCalls
     if pc==STOP:u.emu_stop();return
+    if pc==symbols.get('_AGViewerStillWatching'):ret(stillWatching);return
     if pc==symbols.get('_AGWheelGuard'):
         fn=reg(1);job=reg(2);u.reg_write(UC_ARM64_REG_X1,job);u.reg_write(UC_ARM64_REG_PC,fn);return
     if pc in imports:
@@ -84,7 +95,8 @@ def hook(uc,pc,size,_):
         elif n==208:u.mem_write(reg(1)+0x14+reg(2),bytes(u.mem_read(reg(4),reg(3))));ret()
     elif pc in native:
         name,v=native[pc];a,c,g,cam,back,oldMap,oldTiles=objects[v];assert reg(0)==ENV
-        if name=='arenaNew':ret(alloc(0x100))
+        if name=='service':ret(serviceObjects[v])
+        elif name=='arenaNew':ret(alloc(0x100))
         elif name=='arenaInit':ret()
         elif name=='mapNew':ret(alloc(0x30))
         elif name=='mapInit':ret()
@@ -92,22 +104,31 @@ def hook(uc,pc,size,_):
         elif name=='tileInit':put(reg(1)+0x20,'<ii',reg(3),reg(4));put(reg(1)+0x38,'<B',reg(6));ret()
         elif name=='reset':ret()
         elif name=='start':
-            values=[list(struct.unpack('<8q',u.mem_read(reg(i)+0x18,64)))for i in (3,4,5)]
+            count=get(reg(3)+0x10,'<i')
+            assert count==100 and all(get(reg(i)+0x10,'<i')==count for i in (4,5))
+            values=[list(struct.unpack('<100q',u.mem_read(reg(i)+0x18,800)))for i in (3,4,5)]
+            assert all(x==-1 for x in values[0][8:])
+            assert get(a+0x261,'<B')==0
             assert reg(6)==0;assert get(a+0x266,'<B')==next(i for i,x in enumerate(values[0])if x!=-1)
             started.append((v,reg(2),values));clock=alloc(0x30);put(a+0x110,'<Q',clock);camera=alloc(0x30);put(a+0xd8,'<Q',camera)
-            players=get(MAIN+actors[v],'<Q');array=alloc(0x18+8*8)
-            put(players+0xa0,'<Q',array);put(array+0x10,'<i',8)
+            players=get(MAIN+actors[v],'<Q');array=get(players+0xa0,'<Q')
             for slot,x in enumerate(values[0]):
                 if x==-1:continue
                 player=alloc(0x200);put(array+0x18+slot*8,'<Q',player)
-                put(player+0x114,'<ii',x,values[1][slot]);put(player+0x68,'<q',values[2][slot])
+                put(player+0x114,'<ii',x,values[1][slot]);put(player+0x68,'<q',values[2][slot]);put(player+0xa4,'<i',114)
             ret()
         elif name=='show':put(c+0xb8,'<Q',reg(1));shown.append(v);assert reg(2)==back;ret()
         elif name=='restore':put(c+0xb8,'<Q',reg(1));restored.append(v);assert reg(1)==back;ret()
         elif name=='clockSet':put(reg(1)+0x1c,'<i',reg(2));ret()
         elif name=='clockReset':put(reg(1)+0x18,'<i',get(reg(1)+0x1c,'<i'));ret()
+    elif pc==MAIN+0xaaa730:
+        assert reg(2)==16;waitCalls+=1
+        if waitStop:stillWatching=False
+        else:put(reg(1)+0x13c,'<B',0)
+        ret()
+    elif pc==MAIN+0xaaa6e8:raise AssertionError('Spectator entered the unconditional combat wait')
     elif pc==MAIN+0xbe3f1c:ret(alloc(0x30))
-    elif pc==MAIN+0xbe6b7c:ret()
+    elif pc==MAIN+0xbe6ba0:assert reg(2)<=4096;ret()
     elif pc in (MAIN+0x12e7d28,MAIN+0x12e7d88):n=reg(1);p=alloc(0x18+n*(4 if pc==MAIN+0x12e7d28 else 8));put(p+0x10,'<i',n);ret(p)
     elif pc==MAIN+0xc46e04:decodes+=1;ret(alloc(0x20))
     elif pc==MAIN+0x1c61b0:ret(32)
@@ -119,6 +140,7 @@ def hook(uc,pc,size,_):
 u.hook_add(UC_HOOK_CODE,hook,begin=FAKE,end=FAKE+0x40000)
 u.hook_add(UC_HOOK_CODE,hook,begin=MAIN,end=MAIN+0x3000000)
 u.hook_add(UC_HOOK_CODE,hook,begin=symbols['_AGWheelGuard'],end=symbols['_AGWheelGuard'])
+u.hook_add(UC_HOOK_CODE,hook,begin=symbols['_AGViewerStillWatching'],end=symbols['_AGViewerStillWatching'])
 def call(name,*args):
     u.reg_write(UC_ARM64_REG_SP,STACK+0x30000);u.reg_write(UC_ARM64_REG_LR,STOP)
     for i,x in enumerate(args):u.reg_write(UC_ARM64_REG_X0+i,x)
@@ -138,8 +160,12 @@ for v in range(6):
     before=tileCount;decoded_before=decodes
     for cmd,encoded in trace:
         p=base64.b64decode(encoded)
-        if cmd==-102 and p[3] in (3,4,5,7):assert packet(v,p)==1,(v,p[:5])
-        elif cmd in (8,24):observe(v,cmd,p)
+        if cmd==-102 and p[3] in (3,4,5,7):
+            assert packet(v,p)==1,(v,p[:5])
+            if p[3]==5:
+                assert get(c+0xb8,'<Q')==back and not call('_AGNativeWatchRunning',v)
+                assert not call('_AGNativeWatchToggleCamera',v)
+        elif cmd in (8,24,22):observe(v,cmd,p)
     assert tileCount-before==52
     assert 0<decodes-decoded_before<52,'Repeated terrain images must reuse the decoded image'
     assert len(set(tilePixels[before:]))==52,'Destructible terrain pixel arrays must remain independent'
@@ -148,21 +174,45 @@ for v in range(6):
     p=next(p for p in sp if p[3]==7);clock=get(a+0x110,'<Q');assert get(clock+0x18,'<i')==p[4]
     assert get(cam+0xa4,'<i')==241 and get(cam+0xbc,'<B')==1
     # Camera can move left and right, then restore follow mode.
-    call('_AGNativeWatchCamera',v,0,-7);call('_AGNativeWatchCamera',v,0,-4);call('_AGNativeWatchTick',ENV,v)
+    assert call('_AGNativeWatchRunning',v)
+    assert call('_AGNativeWatchAngle',v)==85
+    assert get(get(a+0xc8,'<Q')+0x10,'<i')==sp[0][14]
+    assert call('_AGNativeWatchToggleCamera',v)
+    call('_AGNativeWatchCamera',v,0,-4);call('_AGNativeWatchTick',ENV,v)
     x=get(cam+0xa4,'<i');assert x>0
     now+=.001;call('_AGNativeWatchTick',ENV,v);assert get(cam+0xa4,'<i')==x,'No camera burst before 15ms'
     now+=.02;call('_AGNativeWatchCamera',v,1,-4);call('_AGNativeWatchCamera',v,0,-3);call('_AGNativeWatchTick',ENV,v);assert get(cam+0xa4,'<i')<x
-    call('_AGNativeWatchCamera',v,0,-7);call('_AGNativeWatchTick',ENV,v);assert get(cam+0xbc,'<B')==1
+    assert not call('_AGNativeWatchToggleCamera',v)
+    call('_AGNativeWatchTick',ENV,v);assert get(cam+0xbc,'<B')==1
+    # The snapshot's final wait must follow actual completion or cancellation.
+    before_wait=waitCalls
+    call('_AGBattleAwait',ENV,c,v,1,0);assert waitCalls==before_wait
+    put(c+0x13c,'<B',1);call('_AGBattleAwait',ENV,c,v,1,0);assert waitCalls==before_wait+1
+    put(c+0x13c,'<B',1);waitStop=True;call('_AGBattleAwait',ENV,c,v,1,0)
+    assert waitCalls==before_wait+2 and get(c+0x13c,'<B')==1
+    put(c+0x13c,'<B',0);waitStop=False;stillWatching=True
     busy=True;assert call('_AGNativeWatchTryEnd',ENV,v)==0
     assert get(c+0xb8,'<Q')==get(a+0xe8,'<Q'),'Busy cancellation changed the scene'
     busy=False;assert call('_AGNativeWatchTryEnd',ENV,v)==1;call('_AGNativeWatchEnd',ENV,v)
     assert get(c+0xb8,'<Q')==back and get(a+0xc8,'<Q')==oldMap and get(g+0xb8,'<Q')==oldTiles and get(a+0x266,'<B')==7
     assert get(cam+0xa4,'<i')==3 and get(cam+0xa8,'<i')==7 and get(cam+0xbc,'<B')==0
+    assert get(a+0x261,'<B')==1 and not call('_AGNativeWatchRunning',v)
     assert packet(v,sp[0])==1
     assert packet(v,next(p for p in sp if p[3]==5))==0,'Incomplete terrain cannot start'
     tile=next(p for p in sp if p[3]==4);bad=bytearray(tile);bad[19:23]=(24000).to_bytes(4,'big');assert packet(v,bad)==0
     assert packet(v,tile)==1;assert packet(v,tile)==0,'Repeated chunk cannot duplicate a tile'
     call('_AGNativeWatchEnd',ENV,v)
-assert len(started)==len(shown)==len(restored)==6
+
+    # Some server versions send the initial positions and no final clock.
+    # Complete from the same snapshot without opening a participant screen.
+    for cmd,encoded in trace:
+        p=base64.b64decode(encoded)
+        if cmd==-102 and p[3] in (3,4,5):assert packet(v,p)==1
+        elif cmd in (8,24):observe(v,cmd,p)
+    busy=True;assert not call('_AGNativeWatchTryFinishSnapshot',ENV,v)
+    busy=False;assert call('_AGNativeWatchTryFinishSnapshot',ENV,v)
+    assert call('_AGNativeWatchRunning',v) and get(c+0xb8,'<Q')==get(a+0xe8,'<Q')
+    call('_AGNativeWatchEnd',ENV,v)
+assert len(started)==len(shown)==len(restored)==12
 assert all(n==0 for n in pins.values()),pins
-print('PASS compiled iPhone ARM64: six variants, 312 independent terrain tiles,',decodes,'image decodes including aborted snapshots; image reuse, nonblocking busy cancellation, native start/show, HP/positions, snapshot clock, camera, restoration, reopen and malformed snapshot rejection; no live traffic')
+print('PASS compiled iPhone ARM64: six variants, snapshot-only presentation, map/HP/positions, independent destructible terrain, camera, nonblocking leave, lost-notify recovery and reopening')

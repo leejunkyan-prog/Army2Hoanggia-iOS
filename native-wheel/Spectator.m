@@ -8,8 +8,9 @@
 #include "Lobby.h"
 #import "GameViewport.h"
 
-typedef NS_ENUM(int, WatchPhase) { Offered, WaitingForMatch, InMatch, Leaving };
-typedef NS_ENUM(int, WatchAction) { NoAction, Accept, Leave, Refresh };
+typedef NS_ENUM(int, WatchPhase) { Offered, WaitingForMatch, InMatch };
+typedef NS_ENUM(int, WatchAction) { NoAction, Accept };
+typedef NS_ENUM(int, WatchReceive) { PassToGame, Consumed, Snapshot, MatchEnded, LiveBeforeReady, ObserveFrame };
 
 @interface ArmyWatch : UIViewController <WKScriptMessageHandler, WKNavigationDelegate>
 @property(nonatomic) int variant;
@@ -17,19 +18,20 @@ typedef NS_ENUM(int, WatchAction) { NoAction, Accept, Leave, Refresh };
 @property(nonatomic) uint8_t room, area;
 @property(nonatomic,copy) NSData *ticket;
 @property(nonatomic,copy) NSString *question;
-@property(nonatomic,copy) NSString *problem;
 @property(nonatomic) WatchPhase phase;
 @property(nonatomic) WatchAction action;
-@property(nonatomic) NSTimeInterval deadline;
-@property(nonatomic) NSTimeInterval nativeReadyAt;
+@property(nonatomic) NSTimeInterval deadline, presentAfter;
 @property(nonatomic,strong) UIWindow *window;
 @property(nonatomic,weak) UIWindow *previous;
 @property(nonatomic,strong) WKWebView *web;
 @property(nonatomic,strong) NSMutableArray *pending;
+@property(nonatomic,strong) NSTimer *watchdog;
 @property(nonatomic) NSUInteger pendingBytes;
 @property(nonatomic) BOOL webReady, delivering, retryScheduled, snapshotReceived, endReceived;
-@property(nonatomic) BOOL battlefield, menuVisible;
+@property(nonatomic) BOOL battlefield, menuVisible, nativeStarted;
 @property(nonatomic) BOOL auxiliary;
+@property(nonatomic) BOOL keypadCaptured;
+@property(nonatomic) int shownAngle;
 @property(nonatomic) int switchToPB;
 - (void)show;
 - (void)close;
@@ -37,23 +39,31 @@ typedef NS_ENUM(int, WatchAction) { NoAction, Accept, Leave, Refresh };
 - (void)accept;
 - (void)cancel;
 - (void)updatePhase;
+- (void)checkDeadline;
 @end
 
 static ArmyWatch *current;
 static atomic_bool active;
 static atomic_int activeVariant;
+static atomic_bool watching[6];
 static atomic_bool nativeCleanup[6];
+static atomic_int snapshotCalls[6];
 static atomic_int pendingPB[6];
-int AGViewerActive(int v){return v>=0&&v<6&&atomic_load(&active)&&atomic_load(&activeVariant)==v;}
+static ArmyWatch *pendingLeave[6];
+static ArmyWatch *closingWatch[6];
+int AGViewerActive(int v){
+    return v>=0&&v<6&&(atomic_load(&active)&&atomic_load(&activeVariant)==v);
+}
 static bool heldKeys[6][256];
 static atomic_uintptr_t nativeWait[6];
 static uintptr_t battlefieldSession[6];
 static NSTimeInterval battlefieldUntil[6];
 static NSTimeInterval now(void) { return NSProcessInfo.processInfo.systemUptime; }
+static void updateCamera(ArmyWatch *watch);
 
 int AGViewerInput(int variant,int kind,int code) {
     if(variant<0||variant>=6)return 0;
-    if((unsigned)kind>1)return AGViewerActive(variant)&&!AGNativeWatchAux(variant);
+    if((unsigned)kind>1)return atomic_load(&nativeCleanup[variant])||(AGViewerActive(variant)&&!AGNativeWatchAux(variant));
     ArmyWatch *watch;
     const unsigned index=(unsigned)code+128;
     @synchronized(ArmyWatch.class){
@@ -63,15 +73,30 @@ int AGViewerInput(int variant,int kind,int code) {
             return 1;
         }
         watch=current;
-        if(!watch||watch.variant!=variant)return 0;
+        if(!watch||watch.variant!=variant)return atomic_load(&nativeCleanup[variant]);
         if(watch.phase==InMatch&&AGNativeWatchAux(variant))return 0;
+        BOOL repeated=kind==0&&index<256&&heldKeys[variant][index];
         if(kind==0&&index<256)heldKeys[variant][index]=true;
-        BOOL direction=(code>=-4&&code<=-1)||code=='2'||code=='4'||code=='6'||code=='8';
-        if(kind==0&&direction&&watch.phase==InMatch&&watch.snapshotReceived&&
-           AGNativeWatchFree(variant)&&!watch.menuVisible)
-            AGNativeWatchCamera(variant,kind,code);
+        if(repeated&&code==-6)return 1;
+        if(kind==0&&watch.phase==InMatch&&watch.snapshotReceived){
+            // The left softkey and the F1 pad button are distinct routes.
+            // F1 sends -6, while the MIDP left softkey also sends -21.
+            if(code==-6&&!watch.menuVisible){
+                dispatch_async(dispatch_get_main_queue(),^{updateCamera(watch);});
+                return 1;
+            }
+            BOOL direction=(code>=-4&&code<=-1)||code=='2'||code=='4'||code=='6'||code=='8';
+            if(direction&&AGNativeWatchFree(variant)&&!watch.menuVisible)
+                AGNativeWatchCamera(variant,kind,code);
+        }
+        if(kind==0&&watch.phase==WaitingForMatch&&
+           (code==-7||code==-22||code==-11||code=='R'||code=='r'||code==27)){
+            [watch cancel];
+            return 1;
+        }
     }
     if(kind==0)dispatch_async(dispatch_get_main_queue(),^{
+        @synchronized(ArmyWatch.class){if(current!=watch)return;}
         if(watch.webReady){
             [watch.web evaluateJavaScript:[NSString stringWithFormat:@"watchKey(%d)",code] completionHandler:nil];
         }else if(code==-6||code==-5||code==-21||code=='L'||code=='l'||code==13||code==10||code=='5'||code=='F'||code=='f'){
@@ -102,25 +127,43 @@ void AGViewerExpectBattlefield(int variant,uintptr_t connection) {
     @synchronized(ArmyWatch.class){battlefieldSession[variant]=connection;battlefieldUntil[variant]=now()+15;}
 }
 static void screen(ArmyWatch *w) { dispatch_async(dispatch_get_main_queue(),^{ [w show]; }); }
+static void updateCamera(ArmyWatch *watch) {
+    @synchronized(ArmyWatch.class){
+        if(current!=watch||watch.phase!=InMatch||!watch.snapshotReceived||watch.auxiliary||watch.menuVisible)return;
+        int free=AGNativeWatchToggleCamera(watch.variant);
+        [watch.web evaluateJavaScript:[NSString stringWithFormat:@"watchCameraMode(%d)",free] completionHandler:nil];
+    }
+}
 static void finish(ArmyWatch *w) {
     if(current!=w)return;
+    if(AGNativeWatchAvailable()&&w.phase!=Offered)atomic_store(&nativeCleanup[w.variant],true);
     current=nil;atomic_store(&active,false);
-    if(AGNativeWatchAvailable())atomic_store(&nativeCleanup[w.variant],true);
+    atomic_store(&watching[w.variant],false);
+    AGNativeWatchClearCameraKeys(w.variant);
     if(w.switchToPB)atomic_store(&pendingPB[w.variant],w.switchToPB);
-    dispatch_async(dispatch_get_main_queue(),^{
-        [w close];
-        if(w.battlefield)AGLobbyWatchFinished(w.variant,w.connection);
-    });
+    closingWatch[w.variant]=w;
+    if(!atomic_load(&nativeCleanup[w.variant])&&!w.battlefield){
+        closingWatch[w.variant]=nil;
+        dispatch_async(dispatch_get_main_queue(),^{[w close];});
+    }
 }
 static void leave(ArmyWatch *w) {
-    if(w.phase==Leaving)return;
     if(w.endReceived){finish(w);return;}
-    w.action = w.phase==Offered ? NoAction : (w.phase==WaitingForMatch && w.action==Accept) ? Refresh : Leave;
-    if(w.action==NoAction){finish(w);return;}
-    w.phase=Leaving;w.deadline=now()+5;
-    for(int key=-4;key<=-1;key++)AGNativeWatchCamera(w.variant,1,key);
-    [w.pending removeAllObjects];w.pendingBytes=0;
+    if(w.phase!=Offered&&w.action!=Accept)pendingLeave[w.variant]=w;
+    finish(w);
+}
+static void advanceWatch(ArmyWatch *w,NSTimeInterval time) {
+    if(!w.deadline||time<w.deadline)return;
+    leave(w);
+}
+static void watchReady(ArmyWatch *w){
+    if(w.phase!=InMatch||w.snapshotReceived)return;
+    w.snapshotReceived=YES;
+    w.deadline=0;
     screen(w);
+}
+int AGViewerStillWatching(int variant) {
+    return variant>=0&&variant<6&&atomic_load(&watching[variant]);
 }
 static NSData *readBody(void *message) {
     // The same HG78 DataInputStream layout used by Notes77 and Corpse.
@@ -141,17 +184,36 @@ static BOOL combatPacket(int cmd) {
         default:return NO;
     }
 }
-static int receiveState(void *env,void *message,int variant,NSData *__strong *nativePacket,ArmyWatch *__strong *owner) {
-    if(!env||!message||variant<0||variant>=6)return 0;
+static WatchReceive receiveState(void *env,void *message,int variant,NSData *__strong *nativePacket,ArmyWatch *__strong *owner) {
+    if(!env||!message||variant<0||variant>=6)return PassToGame;
     int cmd=*(const int8_t *)((const uint8_t *)message+0x30);
-    if(cmd!=-102 && !atomic_load(&active))return 0;
+    if(cmd!=-102&&!atomic_load(&active))
+        return atomic_load(&nativeCleanup[variant])&&combatPacket(cmd)&&cmd!=8&&cmd!=20?Consumed:PassToGame;
     @autoreleasepool {
         @synchronized(ArmyWatch.class) {
             ArmyWatch *w=current;
             if(cmd!=-102 && (!w || w.variant!=variant))return 0;
             if(cmd==3 || cmd==-4){finish(w);return 0;}
             if(cmd==45 && w.phase==WaitingForMatch){finish(w);return 0;}
-            if(cmd!=-102 && (!(w.phase==InMatch || w.phase==Leaving) || !combatPacket(cmd)))return 0;
+            if(cmd!=-102){
+                if(w.phase!=InMatch||!combatPacket(cmd))return 0;
+                if(AGNativeWatchAvailable()){
+                    if(cmd==20)return 1;
+                    if(w.nativeStarted&&!w.snapshotReceived&&(cmd==21||cmd==22||cmd==84)){
+                        // Some servers omit the final clock packet. The first
+                        // live move or shot follows the complete snapshot.
+                        // Complete before the original dispatcher sees it.
+                        *owner=w;
+                        return LiveBeforeReady;
+                    }
+                    if(cmd==8||cmd==24||cmd==22||cmd==84){
+                        *nativePacket=readBody(message);
+                        *owner=w;
+                        return ObserveFrame;
+                    }
+                    return 0;
+                }
+            }
             NSData *body=readBody(message);
             if(!body){if(w && w.variant==variant)leave(w);return 1;}
             const uint8_t *p=body.bytes;NSUInteger n=body.length;
@@ -159,53 +221,49 @@ static int receiveState(void *env,void *message,int variant,NSData *__strong *na
                 if(n<4||p[0]!=0x53||p[1]!=0x50||p[2]!=1)return 1;
                 if(p[3]==0) {
                     if(n<16 || p[4]>1 || n!=16+(NSUInteger)(p[14]*256+p[15]))return 1;
-                    if(w && w.phase!=Offered)return 1;
+                    if((w&&w.phase!=Offered)||atomic_load(&nativeCleanup[variant]))return 1;
                     uintptr_t conn=AGViewerConnection(env,variant);
                     if(!conn)return 1;
                     uintptr_t wait=AGViewerWaitToken(variant);
                     if(wait)atomic_store(&nativeWait[variant],wait);
-                    if(w)finish(w);
+                    BOOL battlefield=battlefieldUntil[variant]>now()&&battlefieldSession[variant]==conn;
                     w=[ArmyWatch new];w.variant=variant;w.connection=conn;w.room=p[4];w.area=p[5];
+                    w.battlefield=battlefield;
+                    if(battlefield)battlefieldUntil[variant]=0;
                     w.ticket=[body subdataWithRange:NSMakeRange(6,8)];
                     w.question=[[NSString alloc] initWithBytes:p+16 length:n-16 encoding:NSUTF8StringEncoding]?:@"Bạn muốn xem trận đang diễn ra?";
-                    w.pending=[NSMutableArray array];w.phase=Offered;w.deadline=now()+60;
+                    w.pending=[NSMutableArray array];w.phase=Offered;w.deadline=now()+60;w.shownAngle=-1;
+                    if(current){ArmyWatch *previous=current;dispatch_async(dispatch_get_main_queue(),^{[previous close];});}
                     current=w;atomic_store(&activeVariant,variant);atomic_store(&active,true);screen(w);return 1;
                 }
-                if(!w && p[3]==3 && n==21 && p[4]==0 && p[5]==0 &&
+                if(!w && p[3]==3 && n==21 && p[4]<=1 && !atomic_load(&nativeCleanup[variant]) &&
                    battlefieldUntil[variant]>now() && battlefieldSession[variant]==AGViewerConnection(env,variant)){
                     w=[ArmyWatch new];w.variant=variant;w.connection=battlefieldSession[variant];
                     w.room=p[4];w.area=p[5];w.battlefield=YES;
                     w.ticket=[body subdataWithRange:NSMakeRange(6,8)];
                     w.pending=[NSMutableArray array];w.phase=WaitingForMatch;
-                    w.deadline=now()+15;
+                    w.deadline=now()+15;w.shownAngle=-1;
                     current=w;atomic_store(&activeVariant,variant);atomic_store(&active,true);battlefieldUntil[variant]=0;
                 }
                 if(!w || w.variant!=variant)return 1;
                 if(p[3]==6){
                     if(n!=12||memcmp(p+4,w.ticket.bytes,8)||w.endReceived)return 1;
-                    if(AGNativeWatchAvailable()){*nativePacket=body;*owner=w;return 3;}
+                    if(AGNativeWatchAvailable()){*nativePacket=body;*owner=w;return MatchEnded;}
                     if(w.phase!=InMatch||!w.snapshotReceived){finish(w);return 1;}
                     // Keep the last shot and its HP update in the same queue as earlier frames.
                     w.endReceived=YES;w.deadline=now()+10;
                 }else if(p[3]==3){
                     if(n!=21||p[4]!=w.room||p[5]!=w.area||memcmp(p+6,w.ticket.bytes,8))return 1;
-                    if(w.phase==Leaving){w.action=Leave;return 1;}
                     if(w.phase!=WaitingForMatch)return 1;
-                    w.phase=InMatch;w.deadline=now()+20;screen(w);
+                    w.phase=InMatch;w.deadline=now()+20;
+                    atomic_store(&watching[variant],true);
+                    screen(w);
                 }else if(p[3]!=4&&p[3]!=5&&p[3]!=7)return 1;
                 if(w.phase!=InMatch)return 1;
                 if(!w.snapshotReceived)w.deadline=now()+20;
                 if(p[3]==7&&!AGNativeWatchAvailable())w.snapshotReceived=YES;
             }
-            if(AGNativeWatchAvailable()){
-                if(cmd==-102){
-                    if(w.phase==Leaving&&p[3]!=6)return 1;
-                    *nativePacket=body;*owner=w;return p[3]==6?3:2;
-                }
-                if(cmd==8||cmd==24)AGNativeWatchObserve(variant,cmd,p,n);
-                return 0;
-            }
-            if(w.phase==Leaving)return 1;
+            if(AGNativeWatchAvailable()){*nativePacket=body;*owner=w;return Snapshot;}
             if(w.pending.count>=4096 || w.pendingBytes+n>24*1024*1024){leave(w);return 1;}
             [w.pending addObject:@[@(cmd),body]];
             w.pendingBytes+=n;
@@ -217,25 +275,45 @@ static int receiveState(void *env,void *message,int variant,NSData *__strong *na
 int AGViewerReceive(void *env,void *message,int variant){
     @autoreleasepool {
         NSData *packet=nil;ArmyWatch *owner=nil;
-        int result=receiveState(env,message,variant,&packet,&owner);
-        if(result<2)return result;
+        WatchReceive result=receiveState(env,message,variant,&packet,&owner);
+        if(result==PassToGame||result==Consumed)return result;
         const uint8_t *p=packet.bytes;
         // Texture creation may hand off to the GDX render thread. Never hold
         // the UI/state monitor while waiting for the original game routines.
-        if(result==3){
-            AGNativeWatchEnd(env,variant);
+        if(result==MatchEnded){
             @synchronized(ArmyWatch.class){if(current==owner)finish(owner);}
+        }else if(result==LiveBeforeReady){
+            int cmd=*(const int8_t *)((const uint8_t *)message+0x30);
+            if(!AGNativeWatchFinishSnapshot(env,variant)){
+                @synchronized(ArmyWatch.class){if(current==owner)leave(owner);}
+                return 1;
+            }
+            NSData *frame=readBody(message);
+            if(frame)AGNativeWatchObserve(variant,cmd,frame.bytes,frame.length);
+            @synchronized(ArmyWatch.class){
+                if(current!=owner||owner.phase!=InMatch)return 1;
+                watchReady(owner);
+            }
+            return 0;
+        }else if(result==ObserveFrame){
+            int cmd=*(const int8_t *)((const uint8_t *)message+0x30);
+            if(packet)AGNativeWatchObserve(variant,cmd,p,packet.length);
+            return 0;
         }else{
-            if(p[3]==3&&atomic_exchange(&nativeCleanup[variant],false))AGNativeWatchEnd(env,variant);
+            @synchronized(ArmyWatch.class){
+                if(current!=owner||owner.phase!=InMatch)return 1;
+                atomic_fetch_add(&snapshotCalls[variant],1);
+            }
             int ok=AGNativeWatchPacket(env,variant,p,packet.length);
+            atomic_fetch_sub(&snapshotCalls[variant],1);
             @synchronized(ArmyWatch.class){
                 if(current==owner){
                     if(!ok)leave(owner);
-                    else if(p[3]==5)owner.nativeReadyAt=now()+.4;
-                    else if(p[3]==7){
-                        owner.snapshotReceived=YES;owner.nativeReadyAt=0;owner.deadline=0;
-                        screen(owner);
+                    else if(p[3]==5&&owner.phase==InMatch){
+                        owner.nativeStarted=YES;
+                        owner.presentAfter=now()+.4;
                     }
+                    else if(p[3]==7)watchReady(owner);
                 }
             }
         }
@@ -244,8 +322,21 @@ int AGViewerReceive(void *env,void *message,int variant){
 }
 void AGViewerTick(void *env,int variant) {
     if(!env||variant<0||variant>=6)return;
-    if(atomic_exchange(&nativeCleanup[variant],false)&&!AGNativeWatchTryEnd(env,variant))
-        atomic_store(&nativeCleanup[variant],true);
+    if(atomic_load(&nativeCleanup[variant])&&!atomic_load(&snapshotCalls[variant])&&AGNativeWatchTryEnd(env,variant))
+        atomic_store(&nativeCleanup[variant],false);
+    if(atomic_load(&nativeCleanup[variant]))return;
+    ArmyWatch *closing,*leaving;
+    @synchronized(ArmyWatch.class){
+        leaving=pendingLeave[variant];pendingLeave[variant]=nil;
+        closing=closingWatch[variant];closingWatch[variant]=nil;
+    }
+    if(leaving){
+        uint8_t data[12]={0x53,0x50,1,2};
+        memcpy(data+4,leaving.ticket.bytes,8);
+        AGViewerSend(env,variant,leaving.connection,-102,data,sizeof data);
+    }
+    if(closing)dispatch_async(dispatch_get_main_queue(),^{[closing close];});
+    if(closing.battlefield&&!closing.switchToPB)AGLobbyWatchFinished(variant,closing.connection);
     int pb=atomic_exchange(&pendingPB[variant],0);
     if(pb)AGNativeWatchSwitch(env,pb-1);
     AGNativeWatchTick(env,variant);
@@ -253,7 +344,7 @@ void AGViewerTick(void *env,int variant) {
     if(wait)AGViewerDismissWait(variant,wait);
     if(!atomic_load(&active))return;
     @autoreleasepool {
-        ArmyWatch *w;WatchAction action;uintptr_t connection;
+        ArmyWatch *w;WatchAction action;uintptr_t connection;BOOL present;
         @synchronized(ArmyWatch.class){
             w=current;if(!w||w.variant!=variant)return;
             BOOL aux=AGNativeWatchAux(variant);
@@ -264,37 +355,31 @@ void AGViewerTick(void *env,int variant) {
                     ((AGGameWindow *)w.window).passesGameTouches=aux;
                 });
             }
+            int angle=AGNativeWatchAngle(variant);
+            if(angle>=0&&angle!=w.shownAngle){
+                w.shownAngle=angle;
+                dispatch_async(dispatch_get_main_queue(),^{
+                    [w.web evaluateJavaScript:[NSString stringWithFormat:@"watchAngle(%d)",angle] completionHandler:nil];
+                });
+            }
+            present=w.phase==InMatch&&w.nativeStarted&&!w.snapshotReceived&&now()>=w.presentAfter;
+        }
+        if(present&&AGNativeWatchTryFinishSnapshot(env,variant)){
+            @synchronized(ArmyWatch.class){if(current==w)watchReady(w);}
         }
         connection=AGViewerConnection(env,variant);
         @synchronized(ArmyWatch.class){
             if(current!=w)return;
             if(connection!=w.connection){finish(w);return;}
-            double time=now();
-            if(w.phase==InMatch&&w.nativeReadyAt&&time>=w.nativeReadyAt){
-                w.snapshotReceived=YES;w.nativeReadyAt=0;w.deadline=0;
-                screen(w);
-            }
-            if(w.deadline&&time>w.deadline){
-                if(w.endReceived){finish(w);return;}
-                if(w.phase==Leaving)w.action=Refresh;
-                else {
-                    w.problem=w.phase==Offered?@"Lời mời xem đã hết hạn.":@"Chưa tải được trận. Đang trở lại danh sách khu vực…";
-                    leave(w);
-                }
-            }
+            advanceWatch(w,now());
+            if(current!=w)return;
             action=w.action;w.action=NoAction;
         }
-        if(action==NoAction)return;
-        uint8_t data[14]={0x53,0x50,1,0};int cmd=-102;size_t len;
-        if(action==Refresh&&w.battlefield){
-            @synchronized(ArmyWatch.class){finish(w);}
-            return;
-        }
-        if(action==Refresh){data[0]=w.room;cmd=7;len=1;}
-        else if(action==Accept){data[3]=1;data[4]=w.room;data[5]=w.area;memcpy(data+6,w.ticket.bytes,8);len=14;}
-        else{data[3]=2;memcpy(data+4,w.ticket.bytes,8);len=12;}
-        int ok=AGViewerSend(env,variant,connection,cmd,data,len);
-        @synchronized(ArmyWatch.class){if(!ok||action==Refresh)finish(w);}
+        if(action!=Accept)return;
+        uint8_t data[14]={0x53,0x50,1,1,w.room,w.area};
+        memcpy(data+6,w.ticket.bytes,8);
+        int ok=AGViewerSend(env,variant,connection,-102,data,sizeof data);
+        @synchronized(ArmyWatch.class){if(!ok)finish(w);}
     }
 }
 
@@ -327,9 +412,14 @@ void AGViewerTick(void *env,int variant) {
         if(!self.window)self.window=[[AGGameWindow alloc] initWithFrame:previous.bounds];
         ((AGGameWindow *)self.window).passesGameKeys=YES;
         ((AGGameWindow *)self.window).gameBottom=CGRectGetMaxY(AGGameRect(previous.rootViewController.view));
-        AGViewportWheelVisible(1);
+        if(!self.keypadCaptured){AGViewportWheelVisible(1);self.keypadCaptured=YES;}
         self.window.windowLevel=UIWindowLevelAlert+1;
         self.window.rootViewController=self;[self.window makeKeyAndVisible];
+    }
+    if(!self.watchdog){
+        __weak ArmyWatch *watch=self;
+        self.watchdog=[NSTimer timerWithTimeInterval:.25 repeats:YES block:^(NSTimer *timer){[watch checkDeadline];}];
+        [NSRunLoop.mainRunLoop addTimer:self.watchdog forMode:NSRunLoopCommonModes];
     }
     if(!self.web){
         NSURL *html=[[NSBundle bundleForClass:ArmyWatch.class] URLForResource:(AGNativeWatchAvailable()?@"native-watch":@"index") withExtension:@"html" subdirectory:@"viewer"];
@@ -360,11 +450,14 @@ void AGViewerTick(void *env,int variant) {
         if(current!=self)return;
         phase=self.phase;
         if(AGNativeWatchAvailable()&&phase==InMatch&&!self.snapshotReceived)phase=WaitingForMatch;
-        message=phase==Offered?self.question:self.problem;
+        message=phase==Offered?self.question:nil;
     }
     NSData *data=[NSJSONSerialization dataWithJSONObject:@[@(phase),message?:@""] options:0 error:nil];
     NSString *arg=[[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
     if(arg)[self.web evaluateJavaScript:[NSString stringWithFormat:@"setWatchPhase(...%@)",arg] completionHandler:nil];
+    int angle=AGNativeWatchAngle(self.variant);
+    if(phase==InMatch&&angle>=0)
+        [self.web evaluateJavaScript:[NSString stringWithFormat:@"watchAngle(%d)",angle] completionHandler:nil];
 }
 - (void)accept {
     @synchronized(ArmyWatch.class){
@@ -374,11 +467,15 @@ void AGViewerTick(void *env,int variant) {
     [self show];
 }
 - (void)cancel {@synchronized(ArmyWatch.class){if(current==self)leave(self);}}
+- (void)checkDeadline {
+    @synchronized(ArmyWatch.class){if(current==self)advanceWatch(self,now());}
+}
 - (void)close {
+    [self.watchdog invalidate];self.watchdog=nil;
     [self.web.configuration.userContentController removeScriptMessageHandlerForName:@"viewer"];
     [self.web stopLoading];self.web.navigationDelegate=nil;
     BOOL restore=self.window.isKeyWindow;
-    if(self.window)AGViewportWheelVisible(0);
+    if(self.keypadCaptured){AGViewportWheelVisible(0);self.keypadCaptured=NO;}
     self.window.hidden=YES;self.window.rootViewController=nil;self.window=nil;
     if(restore){UIWindow *previous=self.previous;[(previous&&!previous.hidden?previous:visibleHost()) makeKeyWindow];}
 }
@@ -399,14 +496,15 @@ void AGViewerTick(void *env,int variant) {
         @synchronized(ArmyWatch.class){
             if(current!=self||self.phase!=InMatch||!self.snapshotReceived)return;
             if([message.body isEqual:@"camera"]){
-                AGNativeWatchCamera(self.variant,0,-7);
-                [self.web evaluateJavaScript:[NSString stringWithFormat:@"watchCameraMode(%d)",AGNativeWatchFree(self.variant)] completionHandler:nil];
+                updateCamera(self);
             }else if([message.body isEqual:@"menuOpen"]||[message.body isEqual:@"menuClosed"]){
                 self.menuVisible=[message.body isEqual:@"menuOpen"];
-                if(self.menuVisible)for(int key=-4;key<=-1;key++)AGNativeWatchCamera(self.variant,1,key);
+                if(self.menuVisible)AGNativeWatchClearCameraKeys(self.variant);
             }else if([message.body isKindOfClass:NSArray.class]&&[message.body count]==2&&[message.body[1] isKindOfClass:NSNumber.class]){
                 int option=[message.body[1] intValue];
                 if([message.body[0] isEqual:@"option"])AGNativeWatchOption(self.variant,option);
+                if([message.body[0] isEqual:@"nudge"]&&!self.menuVisible&&!self.auxiliary&&option>=-4&&option<=-1)
+                    AGNativeWatchNudgeCamera(self.variant,option);
                 if([message.body[0] isEqual:@"pb"]&&option>0&&option<=6&&option!=self.variant+1){
                     self.switchToPB=option;
                     leave(self);
@@ -415,7 +513,8 @@ void AGViewerTick(void *env,int variant) {
                       [message.body[0] isEqual:@"key"]&&[message.body[1] isKindOfClass:NSNumber.class]&&
                       [message.body[2] isKindOfClass:NSNumber.class]){
                 int kind=[message.body[1] intValue],key=[message.body[2] intValue];
-                if((kind==0||kind==1)&&key>=-4&&key<=-1)AGNativeWatchCamera(self.variant,kind,key);
+                if((kind==1||(kind==0&&AGNativeWatchFree(self.variant)&&!self.menuVisible&&!self.auxiliary))&&key>=-4&&key<=-1)
+                    AGNativeWatchCamera(self.variant,kind,key);
             }
         }
     }

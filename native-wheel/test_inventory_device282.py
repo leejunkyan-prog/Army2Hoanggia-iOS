@@ -1,6 +1,6 @@
 """Run compiled iPhone inventory bridge; OS/JNI and selection paint are mocked."""
 from pathlib import Path
-import struct,sys,functools
+import struct,sys
 import lief
 from unicorn import Uc,UC_ARCH_ARM64,UC_MODE_ARM,UC_HOOK_CODE
 from unicorn.arm64_const import *
@@ -51,12 +51,19 @@ def hook(_,pc,size,data):
  if pc==PIN:p=reg(1);pins[p]=pins.get(p,0)+1;ret(p);return
  if pc==UNPIN:p=reg(1);pins[p]-=1;assert pins[p]>=0;ret();return
  if pc==B+0x1300d54:put(reg(1),'<Q',get(E+0x38,'<Q'));put(E+0x38,'<Q',reg(1));ret();return
- if pc in [B+a for a in refresh]:refreshes.append((pc,reg(1)));ret(1);return
+ if pc in [B+a for a in refresh]:
+  screen=reg(1);refreshes.append((pc,screen))
+  vec=get(screen+0x70,'<Q');array=get(vec+0x18,'<Q');index=get(screen+0xc8,'<i')
+  assert 0<=index<get(vec+0x24,'<i')
+  put(screen+0x90,'<Q',get(array+0x18+index*8,'<Q'))
+  ret(1);return
  if pc==B+0xbe3f1c:display_builds+=1;ret(alloc(0x30));return
- if pc==B+0xbe6b7c:
-  a=alloc(0x18+32*8);put(a+0x10,'<i',32);put(reg(1)+0x10,'<Q',a);ret();return
+ if pc in (B+0xbe6b7c,B+0xbe6ba0):
+  capacity=10 if pc==B+0xbe6b7c else reg(2)
+  a=alloc(0x18+capacity*8);put(a+0x10,'<i',capacity)
+  put(reg(1)+0x18,'<Q',a);put(reg(1)+0x10,'<I',0);ret();return
  if pc==B+0x1dfcac:
-  v=reg(1);a=get(v+0x10,'<Q');n=get(v+0x24,'<i');assert n<32
+  v=reg(1);a=get(v+0x18,'<Q');n=get(v+0x24,'<i');assert n<get(a+0x10,'<i')
   put(a+0x18+n*8,'<Q',reg(2));put(v+0x24,'<i',n+1);ret();return
  if pc not in imports:return
  name=imports[pc]
@@ -85,10 +92,10 @@ def item(id,quantity=1,equipment=False):
 def vector(rows):
  a=alloc(0x18+8*len(rows));put(a+0x10,'<I',len(rows))
  for i,p in enumerate(rows):put(a+0x18+8*i,'<Q',p)
- v=alloc(0x30);put(v+0x10,'<Q',a);put(v+0x24,'<I',len(rows));return v
+ v=alloc(0x30);put(v+0x10,'<I',7);put(v+0x18,'<Q',a);put(v+0x24,'<I',len(rows));return v
 
 def ids(v):
- a=get(v+0x10,'<Q');return [get(get(a+0x18+8*i,'<Q')+0x80,'<q')for i in range(get(v+0x24,'<I'))]
+ a=get(v+0x18,'<Q');return [get(get(a+0x18+8*i,'<Q')+0x80,'<q')for i in range(get(v+0x24,'<I'))]
 def displayed(screen):return ids(get(screen+0x70,'<Q'))
 for v in range(6):
  canvas=alloc(0x180);screen=alloc(0xe0);clazz=alloc(0x180);pool=alloc(0xc0)
@@ -99,7 +106,10 @@ for v in range(6):
  call('_AGInventoryOrder',E,v,canvas,screen,1);assert displayed(screen)==[70001,7,104,120]
  assert ids(vec)==[104,70001,7,120],'Server Vector must not be reordered'
  display=get(screen+0x70,'<Q');builds=display_builds
- for _ in range(20):call('_AGInventoryOrder',E,v,canvas,screen,1)
+ for _ in range(20):
+  # Native update assigns its source Vector each frame before the bridge runs.
+  put(screen+0x70,'<Q',vec)
+  call('_AGInventoryOrder',E,v,canvas,screen,1)
  assert get(screen+0x70,'<Q')==display and display_builds==builds,'Unchanged frame rebuilt the display'
  assert get(screen+0x90,'<Q')==rows[1]
  child=alloc(0x80);put(child+0x10,'<Q',screen);put(canvas+0xb8,'<Q',child);call('_AGInventoryOrder',E,v,canvas,child,0)
@@ -111,11 +121,19 @@ for v in range(6):
  # Selected recipe must resolve into the next server vector at action time.
  put(screen+0xc8,'<i',3);put(screen+0x90,'<Q',fresh[3]);newpaper=item(120,1);replacement=vector([fresh[0],newpaper,fresh[2],fresh[1]]);put(pool+0xa8,'<Q',replacement)
  assert call('_AGInventoryResolve',E,fresh[3])==newpaper
- assert get(screen+0x70,'<Q')==replacement and get(screen+0xc8,'<i')==1 and get(screen+0x90,'<Q')==newpaper
+ assert displayed(screen)==[105,70001,7,120] and get(screen+0xc8,'<i')==3 and get(screen+0x90,'<Q')==fresh[3]
  call('_AGInventoryOrder',E,v,canvas,screen,0);call('_AGInventoryOrder',E,v,canvas,screen,1);assert displayed(screen)==[70001,7,105,120]
  assert any(pc==B+refresh[v]for pc,s in refreshes)
  # Simulate 100 refreshes while keeping template IDs and handles unchanged.
  for turn in range(100):
   put(fresh[1]+0x90,'<q',100+turn);call('_AGInventoryOrder',E,v,canvas,screen,1);assert displayed(screen)[0]==7
+ # Empty and large real Vectors are valid chest states.
+ call('_AGInventoryOrder',E,v,canvas,0,0)
+ empty=vector([]);put(pool+0xa8,'<Q',empty);put(screen+0x70,'<Q',empty)
+ call('_AGInventoryOrder',E,v,canvas,screen,1);assert displayed(screen)==[]
+ many=vector([item(i,100+i)for i in range(40,0,-1)]);put(pool+0xa8,'<Q',many)
+ call('_AGInventoryOrder',E,v,canvas,screen,1);assert displayed(screen)==list(range(1,41))
+ assert ids(many)==list(range(40,0,-1))
+ call('_AGInventoryOrder',E,v,canvas,0,0)
 assert all(n==0 for n in pins.values()),pins
 print('PASS compiled ARM64 bridge: six variants, 600 updates, zero blocking monitor calls, unchanged server vectors, stable unchanged frames, vector replacement, dialog deferral, crafting return, recipe resolution, reopen sorting and balanced JNI roots')

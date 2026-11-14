@@ -2,7 +2,7 @@
 const ui=PixelUI;
 const send=value=>window.webkit.messageHandlers.viewer.postMessage(value);
 const aliases={[-22]:-7,[-11]:-7,27:-7,35:-7,82:-7,114:-7,[-21]:-6,76:-6,108:-6,10:-5,13:-5,53:-5,70:-5,102:-5,50:-1,56:-2,52:-3,54:-4};
-let phase=-1,message='',free=false,menu=null,selection=0,awaiting=false,nativeMenu=false;
+let phase=-1,message='',free=false,menu=null,selection=0,awaiting=false,nativeMenu=false,angle=-1;
 let drag=null,dragCode=0,pbs=false,variant=1;
 function stopDrag(){
  if(dragCode)send(['key',1,dragCode]);
@@ -36,8 +36,9 @@ const options=()=>menu==='v9'?v9:main;
 window.watchCameraMode=flag=>{free=!!flag;if(!free)stopDrag();};
 window.watchNativeMenu=flag=>{nativeMenu=!!flag;};
 window.watchVariant=number=>{variant=number;};
+window.watchAngle=value=>{if(Number.isInteger(value)&&value>=0&&value<360)angle=value;};
 window.setWatchPhase=(next,question)=>{
- if(next!==phase){awaiting=false;menu=null;nativeMenu=false;pbs=false;stopDrag();}
+ if(next!==phase){awaiting=false;menu=null;nativeMenu=false;pbs=false;free=false;angle=-1;stopDrag();}
  phase=next;message=question||'';
 };
 window.watchKey=key=>{
@@ -49,6 +50,7 @@ window.watchKey=key=>{
  }
  if(phase===1&&code===-7){send('leave');return;}
  if(phase!==2||nativeMenu)return;
+ if(key===-6&&!menu){send('camera');return;}
  if(menu){
   const list=options();
   if(code===-1||code===-3)selection=(selection+list.length-1)%list.length;
@@ -58,7 +60,7 @@ window.watchKey=key=>{
  }else if(code===-6)openMenu('main');
  else if(code===-7)send('camera');
 };
-const desktop={ArrowUp:-1,ArrowDown:-2,ArrowLeft:-3,ArrowRight:-4,Enter:-5,Escape:-7,F1:-6,F2:-7};
+const desktop={ArrowUp:-1,ArrowDown:-2,ArrowLeft:-3,ArrowRight:-4,Enter:-5,Escape:-7,F1:-6,F2:-7,ContextMenu:-21};
 for(const type of ['keydown','keyup'])addEventListener(type,event=>{
  const code=desktop[event.key];if(!code)return;
  event.preventDefault();
@@ -76,11 +78,26 @@ function paintMenu(){
   ui.zone(x+5,row,w-10,19,action);
  });
 }
+function cameraControls(){
+ const x=20,y=ui.height-45;
+ for(const [code,dx,dy,rotation] of [[-1,0,-12,-Math.PI/2],[-2,0,12,Math.PI/2],[-3,-12,0,Math.PI],[-4,12,0,0]]){
+  ui.g.save();ui.g.translate(x+dx,y+dy);ui.g.rotate(rotation);
+  ui.g.lineJoin='round';ui.g.lineWidth=1.2;ui.g.strokeStyle='#214247';ui.g.fillStyle='#ffdb56';
+  ui.g.beginPath();ui.g.moveTo(-4,-4);ui.g.lineTo(4,0);ui.g.lineTo(-4,4);
+  ui.g.closePath();ui.g.fill();ui.g.stroke();ui.g.restore();
+  ui.zone(x+dx-6,y+dy-6,12,12,()=>{send(['nudge',code]);});
+ }
+}
 ui.start(()=>{
  if(phase<0)return;
  if(phase===2){
   if(nativeMenu)return;
-  if(!free)ui.text('Đang xem',5,15,{max:100});
+  ui.text('Đang xem',5,15,{max:100});
+  if(angle>=0){
+   ui.rect(133,27,54,11,'#41dce9');
+   ui.text('Góc: '+angle,160,27,{align:'center',color:'#fff',outline:true,max:54});
+  }
+  if(free&&!menu)cameraControls();
   ui.zone(0,0,44,40,()=>openMenu('main'));
   ui.zone(45,0,24,38,()=>nativeAction(5));
   ui.zone(280,0,40,42,()=>{pbs=!pbs;});
@@ -99,6 +116,8 @@ ui.start(()=>{
 },{transparent:true});
 ui.canvas.addEventListener('pointerdown',e=>{
  if(phase!==2||!free||menu||nativeMenu||e.clientY<40)return;
+ const rect=ui.canvas.getBoundingClientRect(),x=(e.clientX-rect.left)*320/rect.width,y=(e.clientY-rect.top)*ui.height/rect.height;
+ if(x<39&&y>ui.height-65)return;
  drag=[e.clientX,e.clientY];ui.canvas.setPointerCapture(e.pointerId);
 });
 ui.canvas.addEventListener('pointermove',e=>{
