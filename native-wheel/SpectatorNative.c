@@ -197,9 +197,11 @@ typedef struct {Watch *w;int clock,first;int64_t x[8],y[8],hp[8];} Start;
 __attribute__((noinline,optnone)) static int start(void *e,void *opaque){
     Start *s=opaque;Watch *w=s->w;int v=w->v;uintptr_t b=base();
     const AGSpectatorMap *m=&AGSpectatorMaps[v];uint8_t *g=global(AGTurnMaps[v].arena_class);
-    uint8_t *players=global(AGTurnMaps[v].array_class);
-    uint8_t *roster=players?*(uint8_t **)(players+0xa0):NULL;
-    int slots=roster?*(int *)(roster+0x10):0;
+    /* On first login there is no battle actor array yet. Native arena.start
+       creates it. cmd8 supplies room-member data, not that actor array; use
+       the same native capacity getter as arena.start instead of requiring
+       an array left over from a previous battle. */
+    int slots=((int (*)(void *))(b+m->slots))(e);
     if(!g||!w->arena||slots<8||slots>127)return 0;
     void *volatile arrays[3];const int64_t *data[3]={s->x,s->y,s->hp};
     for(int i=0;i<3;i++){
@@ -246,7 +248,9 @@ static int show(void *e,void *opaque){
     uint8_t *canvas=global(AGNotesMaps[v].canvas);
     if(!canvas||!w->arena||!AGViewerStillWatching(v))return 0;
     if(*(void **)(canvas+0xb8)==w->arena)return 1;
-    if(*(void **)(canvas+0xb8)!=w->back)return 0;
+    /* cmd8 legitimately activates the room after SP3 saved the area list
+       as back. The APK presents after SP5 without requiring that old screen
+       to remain current. StillWatching already rejects canceled/ended views. */
     uintptr_t b=base();
     ((void (*)(void *))(b+AGBossNativeMaps[v].resetInput))(e);
     ((void (*)(void *,void *,void *))(b+AGSpectatorMaps[v].show))(e,w->arena,w->back);

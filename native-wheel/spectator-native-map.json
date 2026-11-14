@@ -9,7 +9,8 @@
     "cameraClass": 34170400,
     "restore": 5954024,
     "clockSet": 5809416,
-    "clockReset": 5809252
+    "clockReset": 5809252,
+    "slots": 5317360
   },
   {
     "arenaInit": 6474536,
@@ -21,7 +22,8 @@
     "cameraClass": 34361184,
     "restore": 6906460,
     "clockSet": 6765812,
-    "clockReset": 6765688
+    "clockReset": 6765688,
+    "slots": 6291520
   },
   {
     "arenaInit": 7411692,
@@ -33,7 +35,8 @@
     "cameraClass": 34548816,
     "restore": 7843616,
     "clockSet": 7702968,
-    "clockReset": 7702844
+    "clockReset": 7702844,
+    "slots": 7228676
   },
   {
     "arenaInit": 8348848,
@@ -45,7 +48,8 @@
     "cameraClass": 34736448,
     "restore": 8780772,
     "clockSet": 8640124,
-    "clockReset": 8640000
+    "clockReset": 8640000,
+    "slots": 8165832
   },
   {
     "arenaInit": 9286004,
@@ -57,7 +61,8 @@
     "cameraClass": 34924080,
     "restore": 9717928,
     "clockSet": 9577280,
-    "clockReset": 9577156
+    "clockReset": 9577156,
+    "slots": 9102988
   },
   {
     "arenaInit": 10223160,
@@ -69,6 +74,7 @@
     "cameraClass": 35111712,
     "restore": 10655084,
     "clockSet": 10514436,
-    "clockReset": 10514312
+    "clockReset": 10514312,
+    "slots": 10040144
   }
 ]

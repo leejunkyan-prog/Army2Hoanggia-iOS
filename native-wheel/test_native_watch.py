@@ -63,11 +63,13 @@ for v,mp in enumerate(maps):
     actors=[0x207f060,0x20aec70,0x20dc970,0x210a660,0x2138350,0x2166040]
     players=alloc(0x100);put(MAIN+actors[v],'<Q',players)
     roster=alloc(0x18+100*8);put(roster+0x10,'<i',100);put(players+0xa0,'<Q',roster)
+    put(players+0xc0,'<i',100)
     objects.append((a,c,g,cam,back,oldMap,oldTiles))
     service=alloc(0x30);put(service+0x10,'<Q',alloc(0x20))
     native[MAIN+services[v]]=('service',v)
     serviceObjects.append(service)
     for k in ('arenaNew','arenaInit','mapNew','mapInit','start','show','restore','clockSet','clockReset'):native[MAIN+mp[k]]=(k,v)
+    native[MAIN+mp['slots']]=('slots',v)
     native[MAIN+tileNew[v]]=('tileNew',v);native[MAIN+tileInit[v]]=('tileInit',v);native[MAIN+reset[v]]=('reset',v)
 def hook(uc,pc,size,_):
     global lock,tileCount,decodes,stillWatching,waitCalls
@@ -103,6 +105,7 @@ def hook(uc,pc,size,_):
     elif pc in native:
         name,v=native[pc];a,c,g,cam,back,oldMap,oldTiles=objects[v];assert reg(0)==ENV
         if name=='service':ret(serviceObjects[v])
+        elif name=='slots':ret(get(get(MAIN+actors[v],'<Q')+0xc0,'<i'))
         elif name=='arenaNew':ret(alloc(0x100))
         elif name=='arenaInit':ret()
         elif name=='mapNew':ret(alloc(0x30))
@@ -119,6 +122,8 @@ def hook(uc,pc,size,_):
             assert reg(6)==0;assert get(a+0x266,'<B')==next(i for i,x in enumerate(values[0])if x!=-1)
             started.append((v,reg(2),values));clock=alloc(0x30);put(a+0x110,'<Q',clock);camera=alloc(0x30);put(a+0xd8,'<Q',camera)
             players=get(MAIN+actors[v],'<Q');array=get(players+0xa0,'<Q')
+            if not array:
+                array=alloc(0x18+count*8);put(array+0x10,'<i',count);put(players+0xa0,'<Q',array)
             for slot,x in enumerate(values[0]):
                 if x==-1:continue
                 player=alloc(0x200);put(array+0x18+slot*8,'<Q',player)

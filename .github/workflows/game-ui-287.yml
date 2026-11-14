@@ -1,0 +1,61 @@
+name: Build Army2 iOS 287
+on:
+  workflow_dispatch:
+  push:
+    branches: [qa/ios-287-spectator-entry]
+permissions:
+  contents: read
+concurrency:
+  group: game-ui-287
+  cancel-in-progress: true
+jobs:
+  framework:
+    runs-on: macos-26
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile and verify iPhone framework
+        run: bash native-wheel/build_287.sh
+      - name: Test compiled ARM64 snapshot and inventory bridges
+        shell: bash
+        run: |
+          python3 -m venv native-wheel/build/device-qa
+          native-wheel/build/device-qa/bin/pip install --quiet lief unicorn
+          py=native-wheel/build/device-qa/bin/python
+          bin=native-wheel/build/QA/AGWheel.framework/AGWheel
+          status=0
+          "$py" native-wheel/test_native_watch.py "$bin" 2>&1 | tee native-wheel/build/watch-287.txt || status=1
+          "$py" native-wheel/test_inventory_device282.py "$bin" 2>&1 | tee native-wheel/build/inventory-287.txt || status=1
+          "$py" native-wheel/test_recipe_reentry286.py "$bin" 2>&1 | tee native-wheel/build/recipe-287.txt || status=1
+          "$py" native-wheel/test_snapshot_flash286.py "$bin" 2>&1 | tee native-wheel/build/flash-287.txt || status=1
+          "$py" native-wheel/test_watch_room_transition287.py "$bin" 2>&1 | tee native-wheel/build/room-transition-287.txt || status=1
+          "$py" native-wheel/test_watch_cold_start287.py "$bin" 2>&1 | tee native-wheel/build/cold-start-287.txt || status=1
+          exit "$status"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Army2HoangGia-Build287-framework
+          path: |
+            native-wheel/build/framework-287.zip
+            native-wheel/build/watch-287.txt
+            native-wheel/build/inventory-287.txt
+            native-wheel/build/recipe-287.txt
+            native-wheel/build/flash-287.txt
+            native-wheel/build/room-transition-287.txt
+            native-wheel/build/cold-start-287.txt
+          if-no-files-found: error
+          retention-days: 14
+  interface:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --no-save playwright
+      - run: npx playwright install --with-deps chromium
+      - run: node native-wheel/test_lobby.js
+      - run: node native-wheel/test_native_watch_ui.js
+
+
