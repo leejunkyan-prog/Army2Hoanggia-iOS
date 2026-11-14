@@ -1,0 +1,4 @@
+project-src/
+__pycache__/
+.DS_Store
+/native-wheel/build/
