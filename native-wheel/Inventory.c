@@ -171,7 +171,9 @@ void *AGInventoryResolve(void *env,void *opaque){
         int index=*(int *)(screen+0xc8),count=display?*(int *)(display+0x24):0;
         if(!items||index<0||index>=count||count>INV_LIMIT||count>*(int *)(items+0x10))continue;
         uint8_t **slot=(uint8_t **)(items+0x18+index*8);
-        if(!*slot||key(*slot)!=wanted)continue;
+        /* All six PBs retain their own chest. An ID match in another PB
+           must never substitute that PB's object into this callback. */
+        if(!*slot||*slot!=opaque||key(*slot)!=wanted)continue;
         uint8_t *data=elements(vec);int n=*(int *)(vec+0x24);
         if(!data||n<0||n>INV_LIMIT||n>*(int *)(data+0x10))continue;
         uint8_t **rows=(uint8_t **)(data+0x18);

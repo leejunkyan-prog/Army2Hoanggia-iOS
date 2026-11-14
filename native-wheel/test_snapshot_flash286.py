@@ -2,12 +2,16 @@
 import base64,json
 from pathlib import Path
 import test_native_watch as t
-from unicorn.arm64_const import UC_ARM64_REG_PC,UC_ARM64_REG_SP,UC_ARM64_REG_LR,UC_ARM64_REG_X2,UC_ARM64_REG_X3,UC_ARM64_REG_X4
+from unicorn.arm64_const import UC_ARM64_REG_PC,UC_ARM64_REG_SP,UC_ARM64_REG_LR
 
 fixture=json.loads((Path(__file__).parent/'testdata/aot285.json').read_text())
 flash=base64.b64decode(fixture['chunks']['0x541c50'])
 t.u.mem_write(t.MAIN+0x541c50,flash)
 t.nativeRanges.append((t.MAIN+0x541c50,t.MAIN+0x541c50+len(flash)))
+shim=base64.b64decode(fixture['chunks']['0x24f90f0'])
+t.u.mem_write(t.MAIN+0x24f90f0,shim)
+t.nativeRanges.append((t.MAIN+0x24f90f0,t.MAIN+0x24f90f0+len(shim)))
+t.u.mem_write(t.MAIN+0x24ff8bc,base64.b64decode(fixture['chunks']['0x24ff8bc']))
 v=0;a,c,g,cam,back,oldMap,oldTiles=t.objects[v]
 for cmd,encoded in t.trace:
  p=base64.b64decode(encoded)
@@ -20,15 +24,15 @@ def set_busy():t.put(c+0x13c,'<B',t.reg(1));t.ret()
 def cas():
  assert t.get(t.reg(2),'<I')==t.reg(0)
  t.put(t.reg(2),'<I',t.reg(1));t.ret(1)
-def await_flash():
- t.u.reg_write(UC_ARM64_REG_X2,0);t.u.reg_write(UC_ARM64_REG_X3,1);t.u.reg_write(UC_ARM64_REG_X4,0)
- t.u.reg_write(UC_ARM64_REG_PC,t.symbols['_AGBattleAwait'])
+def lookup():
+ assert bytes(t.u.mem_read(t.reg(1),14))==b'AGBattleAwait\0'
+ t.ret(t.symbols['_AGBattleAwait'])
 t.extraNative.update({
  t.MAIN+0x1300d54:lambda:t.ret(),t.MAIN+0x12e76d8:lambda:t.ret(),
  t.MAIN+0x50ba44:lambda:t.ret(),t.MAIN+0x50ba04:set_busy,
  t.MAIN+0x50b8d4:lambda:t.ret(t.get(c+0xb8,'<Q')),
  t.MAIN+0x51803c:lambda:t.ret(monitor),t.MAIN+0x131cb08:cas,
- t.MAIN+0x24f90f0:await_flash})
+ t.MAIN+0x131cf70:lookup})
 t.snapshotSync=True;waits=t.waitCalls;clock=t.get(a+0x110,'<Q');seconds=t.get(clock+0x18,'<i')
 t.u.reg_write(UC_ARM64_REG_SP,t.STACK+0x30000);t.u.reg_write(UC_ARM64_REG_LR,t.STOP)
 t.u.reg_write(t.UC_ARM64_REG_X0,t.ENV)

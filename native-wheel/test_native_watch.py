@@ -203,6 +203,9 @@ for v in range(6):
     call('_AGNativeWatchTick',ENV,v);assert get(cam+0xbc,'<B')==1
     # The snapshot's final wait must follow actual completion or cancellation.
     before_wait=waitCalls
+    connection=get(serviceObjects[v]+0x10,'<Q');put(serviceObjects[v]+0x10,'<Q',0)
+    call('_AGBattleAwait',ENV,c,v,1,0);assert waitCalls==before_wait
+    put(serviceObjects[v]+0x10,'<Q',connection)
     call('_AGBattleAwait',ENV,c,v,1,0);assert waitCalls==before_wait
     put(c+0x13c,'<B',1);call('_AGBattleAwait',ENV,c,v,1,0);assert waitCalls==before_wait+1
     put(c+0x13c,'<B',1);waitStop=True;call('_AGBattleAwait',ENV,c,v,1,0)

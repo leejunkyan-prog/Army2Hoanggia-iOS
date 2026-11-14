@@ -67,7 +67,11 @@ __attribute__((visibility("default"))) void AGBattleAwait(void *env,void *lock,i
        the same flash wait. Running becomes true only AFTER this replay;
        using it here sends the receive thread into the old indefinite wait. */
     if(watching&&(!running||!stillWatching))return;
-    if(context(env,&c)<=0||(!c.airship&&!watching)){
+    if(context(env,&c)<=0){
+        if(!watching)AGTurnAwait(env,lock,v,kind,actor);
+        return;
+    }
+    if(!c.airship&&!watching){
         AGTurnAwait(env,lock,v,kind,actor);
         return;
     }
