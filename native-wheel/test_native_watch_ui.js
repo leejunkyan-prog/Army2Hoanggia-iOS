@@ -1,15 +1,28 @@
 'use strict';
 const assert=require('node:assert/strict');
 const path=require('node:path');
-const {pathToFileURL}=require('node:url');
+const fs=require('node:fs');
+const http=require('node:http');
 const {chromium}=require('playwright');
 (async()=>{
- const browser=await chromium.launch({args:['--no-sandbox'],executablePath:process.env.ARMY2_CHROMIUM});
+ const root=path.join(__dirname,'viewer');
+ const server=http.createServer((request,response)=>{
+  const name=path.resolve(root,'.'+new URL(request.url,'http://localhost').pathname);
+  if(!name.startsWith(root+path.sep)){response.writeHead(403);response.end();return;}
+  fs.readFile(name,(error,data)=>{
+   if(error){response.writeHead(404);response.end();return;}
+   const mime={'.html':'text/html','.js':'text/javascript','.png':'image/png'}[path.extname(name)]||'application/octet-stream';
+   response.writeHead(200,{'Content-Type':mime});response.end(data);
+  });
+ });
+ await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+ let browser;
  try{
+  browser=await chromium.launch({args:['--no-sandbox'],executablePath:process.env.ARMY2_CHROMIUM});
   const page=await browser.newPage({viewport:{width:390,height:590}});
   const errors=[];page.on('pageerror',e=>errors.push(e.message));
   await page.addInitScript(()=>{window.sent=[];window.webkit={messageHandlers:{viewer:{postMessage:value=>sent.push(value)}}};});
-  await page.goto(pathToFileURL(path.join(__dirname,'viewer/native-watch.html')).href);
+  await page.goto('http://127.0.0.1:'+server.address().port+'/native-watch.html');
   const setPhase=(p,text='')=>page.evaluate(([p,text])=>setWatchPhase(p,text),[p,text]);
   const press=k=>page.evaluate(k=>watchKey(k),k);
   const last=()=>page.evaluate(()=>sent.at(-1));
@@ -34,5 +47,5 @@ const {chromium}=require('playwright');
   assert.deepEqual(await last(),['pb',2]);
   assert.deepEqual(errors,[]);
   console.log('PASS spectator controls: transparent confirmation, left/OK and decline, ordered in-match menu, camera, leave and PB selector.');
- }finally{await browser.close();}
+ }finally{if(browser)await browser.close();await new Promise(resolve=>server.close(resolve));}
 })().catch(e=>{console.error(e);process.exitCode=1;});
