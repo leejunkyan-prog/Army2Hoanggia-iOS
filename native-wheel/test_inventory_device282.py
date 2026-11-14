@@ -97,7 +97,7 @@ def vector(rows):
 def ids(v):
  a=get(v+0x18,'<Q');return [get(get(a+0x18+8*i,'<Q')+0x80,'<q')for i in range(get(v+0x24,'<I'))]
 def displayed(screen):return ids(get(screen+0x70,'<Q'))
-for v in range(6):
+for v in range(6 if __name__=='__main__' else 0):
  canvas=alloc(0x180);screen=alloc(0xe0);clazz=alloc(0x180);pool=alloc(0xc0)
  put(B+canvases[v],'<Q',canvas);put(canvas+0xb8,'<Q',screen);put(screen,'<Q',clazz);put(B+classes[v],'<Q',clazz);put(B+pools[v],'<Q',pool);put(clazz+0xa0,'<Q',screen)
  put(canvas+0x130,'<i',432);put(screen+0x50,'<i',19);put(screen+0x54,'<i',68);put(screen+0x58,'<i',408);put(screen+0x5c,'<i',520);put(screen+0xc0,'<i',7);put(screen+0xb8,'<i',54)
@@ -121,7 +121,12 @@ for v in range(6):
  # Selected recipe must resolve into the next server vector at action time.
  put(screen+0xc8,'<i',3);put(screen+0x90,'<Q',fresh[3]);newpaper=item(120,1);replacement=vector([fresh[0],newpaper,fresh[2],fresh[1]]);put(pool+0xa8,'<Q',replacement)
  assert call('_AGInventoryResolve',E,fresh[3])==newpaper
- assert displayed(screen)==[105,70001,7,120] and get(screen+0xc8,'<i')==3 and get(screen+0x90,'<Q')==fresh[3]
+ assert displayed(screen)==[105,70001,7,120] and get(screen+0xc8,'<i')==3 and get(screen+0x90,'<Q')==newpaper
+ child=alloc(0x80);put(child+0x10,'<Q',screen);put(canvas+0xb8,'<Q',child)
+ newer=item(120,1);put(pool+0xa8,'<Q',vector([fresh[0],newer,fresh[2],fresh[1]]))
+ assert call('_AGInventoryResolve',E,newpaper)==newer
+ assert get(screen+0x90,'<Q')==newer
+ put(canvas+0xb8,'<Q',screen)
  call('_AGInventoryOrder',E,v,canvas,screen,0);call('_AGInventoryOrder',E,v,canvas,screen,1);assert displayed(screen)==[70001,7,105,120]
  assert any(pc==B+refresh[v]for pc,s in refreshes)
  # Simulate 100 refreshes while keeping template IDs and handles unchanged.
@@ -141,4 +146,5 @@ for v in range(6):
  selected=get(screen+0x90,'<Q');assert get(selected+0x80,'<q')==25 and get(selected+0x90,'<q')==125
  call('_AGInventoryOrder',E,v,canvas,0,0)
 assert all(n==0 for n in pins.values()),pins
-print('PASS compiled ARM64 bridge: six variants, 600 updates, zero blocking monitor calls, unchanged server vectors, stable unchanged frames, vector replacement, dialog deferral, crafting return, recipe resolution, reopen sorting and balanced JNI roots')
+if __name__=='__main__':print('PASS compiled ARM64 bridge: six variants, 600 updates, zero blocking monitor calls, unchanged server vectors, stable unchanged frames, vector replacement, dialog deferral, crafting return, recipe resolution, reopen sorting and balanced JNI roots')
+

@@ -136,12 +136,15 @@ void AGInventoryOrder(void *env,int v,uint8_t *canvas,uint8_t *screen,int active
             state->open=1;state->screen=(uintptr_t)screen;
             *(void **)(screen+0x70)=display.vector;
             index=0;
-            int promoted=0;
+            int promoted=0,found=0;
             for(int i=0;i<n;i++){
-                if(rows[i].key==selected)index=i;
+                if(rows[i].key==selected){index=i;found=1;}
                 promoted|=rows[i].fresh;
             }
-            if(promoted||reopening)index=0;
+            /* New gear can move to the front without changing the target
+               of the recipe callback. That callback calls native v() again
+               when tapped, so changing index here silently changes its item. */
+            if(reopening||!found)index=0;
             *(int *)(screen+0xc8)=index;
             *(void **)(screen+0x90)=n?rows[index].item:NULL;
             uint8_t *clazz=*(uint8_t **)screen;
@@ -153,18 +156,29 @@ void AGInventoryOrder(void *env,int v,uint8_t *canvas,uint8_t *screen,int active
     }
     free(rows);
 }
-/* The read-only recipe action re-resolves its item after a server refresh. */
+/* Rebind in place before the original callback calls v() again. The recipe
+   child and its parent are one chest session, including while a menu is up. */
 void *AGInventoryResolve(void *env,void *opaque){
     if(!env||!opaque)return opaque;uint8_t *item=opaque;uint64_t wanted=key(item);
     for(int v=0;v<6;v++){
         uint8_t *canvas=*(uint8_t **)(base()+AGNotesMaps[v].canvas);if(!canvas)continue;
         uint8_t *screen=*(uint8_t **)(canvas+0xb8),*vec=pool(v);
         void *clazz=*(void **)(base()+inventoryMaps[v][2]);
-        if(!screen||!vec||!clazz||*(void **)screen!=clazz||*(void **)(screen+0x90)!=opaque)continue;
+        if(!screen||!vec||!clazz)continue;
+        for(int depth=0;screen&&*(void **)screen!=clazz&&depth<4;depth++)screen=*(uint8_t **)(screen+0x10);
+        if(!screen||*(void **)screen!=clazz)continue;
+        uint8_t *display=*(uint8_t **)(screen+0x70),*items=display?elements(display):NULL;
+        int index=*(int *)(screen+0xc8),count=display?*(int *)(display+0x24):0;
+        if(!items||index<0||index>=count||count>INV_LIMIT||count>*(int *)(items+0x10))continue;
+        uint8_t **slot=(uint8_t **)(items+0x18+index*8);
+        if(!*slot||key(*slot)!=wanted)continue;
         uint8_t *data=elements(vec);int n=*(int *)(vec+0x24);
         if(!data||n<0||n>INV_LIMIT||n>*(int *)(data+0x10))continue;
         uint8_t **rows=(uint8_t **)(data+0x18);
-        for(int i=0;i<n;i++)if(rows[i]&&key(rows[i])==wanted)return rows[i];
+        for(int i=0;i<n;i++)if(rows[i]&&key(rows[i])==wanted){
+            *slot=rows[i];*(void **)(screen+0x90)=rows[i];
+            return rows[i];
+        }
     }
     return opaque;
 }
@@ -178,3 +192,4 @@ int AGInventoryGeometry(int v,int *out){
     int values[]={width,x,y,w,h,cols,cell};memcpy(out,values,sizeof values);return 1;
 }
 #endif
+

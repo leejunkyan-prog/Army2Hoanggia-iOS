@@ -41,7 +41,7 @@ typedef struct {
     int roster,turn,first,seconds,oldWidth,oldHeight;
     int oldCamera[6];
     uint8_t *bytes,*back,*arena,*oldMap,*oldTiles,*oldBackdrop,*oldRoster;
-    uint8_t oldLocal,oldBackground,oldMode,oldCameraMode,restoreCamera,oldTurn;
+    uint8_t oldLocal,oldBackground,oldMode,oldCameraMode,restoreCamera,oldTurn,oldFlash;
     uint8_t oldTerrainFlags[3];
     uint8_t oldArenaState[6];
     uint64_t moveAt;
@@ -122,6 +122,7 @@ __attribute__((noinline,optnone)) static int prepare(void *e,void *opaque){
     uint8_t *canvas=global(AGNotesMaps[v].canvas);
     if(!a||!canvas||!*(void **)(canvas+0xb8))return 0;
     w->back=pin(e,*(void **)(canvas+0xb8));if(!w->back)return 0;
+    w->oldFlash=canvas[0x13c];
     w->arena=*(void **)(a+0xe8);
     w->oldLocal=a[0x266];w->oldMode=a[0x265];w->oldMap=pin(e,*(void **)(a+0xc8));
     for(size_t i=0;i<sizeof arenaStateOffsets;i++)w->oldArenaState[i]=a[0x260+arenaStateOffsets[i]];
@@ -243,7 +244,9 @@ __attribute__((noinline,optnone)) static int start(void *e,void *opaque){
 static int show(void *e,void *opaque){
     Watch *w=opaque;int v=w->v;
     uint8_t *canvas=global(AGNotesMaps[v].canvas);
-    if(!canvas||!w->arena||*(void **)(canvas+0xb8)!=w->back||!AGViewerStillWatching(v))return 0;
+    if(!canvas||!w->arena||!AGViewerStillWatching(v))return 0;
+    if(*(void **)(canvas+0xb8)==w->arena)return 1;
+    if(*(void **)(canvas+0xb8)!=w->back)return 0;
     uintptr_t b=base();
     ((void (*)(void *))(b+AGBossNativeMaps[v].resetInput))(e);
     ((void (*)(void *,void *,void *))(b+AGSpectatorMaps[v].show))(e,w->arena,w->back);
@@ -257,6 +260,7 @@ static int restore(void *e,void *opaque){
         ((void (*)(void *,void *))(base()+AGSpectatorMaps[v].restore))(e,w->back);
         ((void (*)(void *))(base()+AGBossNativeMaps[v].resetInput))(e);
     }
+    if(canvas)canvas[0x13c]=w->oldFlash;
     if(a){
         a[0x266]=w->oldLocal;a[0x265]=w->oldMode;*(void **)(a+0xc8)=w->oldMap;
         for(size_t i=0;i<sizeof arenaStateOffsets;i++)a[0x260+arenaStateOffsets[i]]=w->oldArenaState[i];
@@ -351,7 +355,11 @@ static int packetNative(void *e,int v,const uint8_t *p,size_t n){
         Start s={.w=w,.clock=p[4],.first=-1};size_t pos=5;
         for(int i=0;i<8;i++){if(n-pos<2)return 0;s.x[i]=be16(p+pos);pos+=2;if(s.x[i]==-1)continue;if(n-pos<10)return 0;s.y[i]=be16(p+pos);s.hp[i]=be64(p+pos+2);pos+=10;if(s.first<0)s.first=i;}
         if(pos!=n||s.first<0)return 0;
-        return guard(e,start,&s)>0;
+        /* Match the working APK: present after actors/terrain are ready,
+           before the following HP/status/clock replay. Deferring this to
+           SP7 lets those native handlers wait on a scene still in the room. */
+        if(guard(e,start,&s)<=0)return 0;
+        return guard(e,show,w)>0;
     }
     if(p[3]==7){
         if(n!=5||!w->started)return 0;
@@ -447,3 +455,4 @@ void AGNativeWatchOption(int v,int option){
 }
 void AGNativeWatchTick(void *e,int v){if(pthread_mutex_trylock(&watchLock))return;tickNative(e,v);pthread_mutex_unlock(&watchLock);}
 #endif
+

@@ -60,7 +60,12 @@ static int busy(const BattleWaitContext *c,int kind,int actor){
 __attribute__((visibility("default"))) void AGBattleAwait(void *env,void *lock,int v,int kind,int actor){
     if(!env||!lock||v<0||v>=6)return;
     BattleWaitContext c={.variant=v};
-    int watching=AGNativeWatchRunning(v);
+    int watching=AGViewerStillWatching(v);
+    /* SP53 replays HP/status before its final clock packet. These are a
+       snapshot, not animations to wait for. The APK's syncing flag bypasses
+       the same flash wait. Running becomes true only AFTER this replay;
+       using it here sends the receive thread into the old indefinite wait. */
+    if(watching&&!AGNativeWatchRunning(v))return;
     if(context(env,&c)<=0||(!c.airship&&!watching)){
         AGTurnAwait(env,lock,v,kind,actor);
         return;
@@ -80,3 +85,4 @@ __attribute__((visibility("default"))) void AGBattleAwait(void *env,void *lock,i
     }
     if(!watching)AGShipTraceWait(v,kind,actor,0);
 }
+

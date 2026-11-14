@@ -104,7 +104,8 @@ int AGLobbySend(void *env,int variant,uintptr_t connection,int command,const uin
    inventory refresh can replace the item, so read its current data at tap. */
 static int NForgeItem(void *env,void *opaque){
     uint8_t *item=opaque;
-    const int id=item[128];
+    if(!item[0xbd])return 0;
+    const int64_t id=*(const int64_t *)(item+0x80);
     if((id>=69&&id<=73)||(id>=120&&id<=129)||(id>=238&&id<=242))return 1;
     void *detail=*(void **)(item+104);
     if(!detail)return 0;

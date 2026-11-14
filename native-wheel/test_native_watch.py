@@ -34,6 +34,9 @@ now=100.0
 stillWatching=True
 waitCalls=0
 waitStop=False
+snapshotSync=False
+nativeRanges=[]
+extraNative={}
 cursor=HEAP+0x10000
 def alloc(n):
     global cursor
@@ -69,6 +72,10 @@ for v,mp in enumerate(maps):
 def hook(uc,pc,size,_):
     global lock,tileCount,decodes,stillWatching,waitCalls
     if pc==STOP:u.emu_stop();return
+    if pc in extraNative:extraNative[pc]();return
+    if any(a<=pc<z for a,z in nativeRanges):return
+    if pc==symbols.get('_AGTurnAwait') and snapshotSync:
+        raise AssertionError('Snapshot synchronization reached the indefinite participant wait')
     if pc==symbols.get('_AGViewerStillWatching'):ret(stillWatching);return
     if pc==symbols.get('_AGWheelGuard'):
         fn=reg(1);job=reg(2);u.reg_write(UC_ARM64_REG_X1,job);u.reg_write(UC_ARM64_REG_PC,fn);return
@@ -141,6 +148,7 @@ u.hook_add(UC_HOOK_CODE,hook,begin=FAKE,end=FAKE+0x40000)
 u.hook_add(UC_HOOK_CODE,hook,begin=MAIN,end=MAIN+0x3000000)
 u.hook_add(UC_HOOK_CODE,hook,begin=symbols['_AGWheelGuard'],end=symbols['_AGWheelGuard'])
 u.hook_add(UC_HOOK_CODE,hook,begin=symbols['_AGViewerStillWatching'],end=symbols['_AGViewerStillWatching'])
+u.hook_add(UC_HOOK_CODE,hook,begin=symbols['_AGTurnAwait'],end=symbols['_AGTurnAwait'])
 def call(name,*args):
     u.reg_write(UC_ARM64_REG_SP,STACK+0x30000);u.reg_write(UC_ARM64_REG_LR,STOP)
     for i,x in enumerate(args):u.reg_write(UC_ARM64_REG_X0+i,x)
@@ -162,9 +170,18 @@ for v in range(6):
         p=base64.b64decode(encoded)
         if cmd==-102 and p[3] in (3,4,5,7):
             assert packet(v,p)==1,(v,p[:5])
+            if p[3]==3:
+                snapshotSync=True
+                # HP/status is replayed before SP7. It cannot wait on a
+                # participant animation while Running is still false.
+                put(c+0x13c,'<B',1);before_wait=waitCalls
+                for kind in range(4):call('_AGBattleAwait',ENV,c,v,kind,0)
+                assert waitCalls==before_wait and get(c+0x13c,'<B')==1
+                put(c+0x13c,'<B',0)
             if p[3]==5:
-                assert get(c+0xb8,'<Q')==back and not call('_AGNativeWatchRunning',v)
+                assert get(c+0xb8,'<Q')==get(a+0xe8,'<Q') and not call('_AGNativeWatchRunning',v)
                 assert not call('_AGNativeWatchToggleCamera',v)
+            if p[3]==7:snapshotSync=False
         elif cmd in (8,24,22):observe(v,cmd,p)
     assert tileCount-before==52
     assert 0<decodes-decoded_before<52,'Repeated terrain images must reuse the decoded image'
@@ -216,3 +233,4 @@ for v in range(6):
 assert len(started)==len(shown)==len(restored)==12
 assert all(n==0 for n in pins.values()),pins
 print('PASS compiled iPhone ARM64: six variants, snapshot-only presentation, map/HP/positions, independent destructible terrain, camera, nonblocking leave, lost-notify recovery and reopening')
+
