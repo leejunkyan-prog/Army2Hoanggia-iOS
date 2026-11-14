@@ -1,0 +1,13 @@
+{
+  "source_jar_sha256": "b5ed7f1c96cbf1dc3864c3e575a5c3643332b0f8536d9f65eac071e30c6b7796",
+  "host": "180.93.120.67",
+  "port": 19149,
+  "server_list_url": "http://180.93.120.67:18080/server.txt",
+  "evidence": {
+    "class": "game/TerrainMidlet.class",
+    "method": "<clinit>",
+    "string_decoder_class": "game/RIKIKONO_nPqNPPVLjPeMeSzteeU_BUITIENHIEP_COMc.class",
+    "server_fallback_method": "hgFillDefaultServer137",
+    "cache_key": "speed"
+  }
+}

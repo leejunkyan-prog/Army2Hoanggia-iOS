@@ -1,0 +1,27 @@
+name: Deliver Army2 iOS 289 original server
+on:
+  workflow_dispatch:
+  push:
+    branches: [delivery/ios-289-original-server]
+permissions:
+  contents: read
+concurrency:
+  group: deliver-army2-ios-289
+  cancel-in-progress: false
+jobs:
+  ipa:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Reconstruct the exact tested Build289 and verify its original server
+        run: python3 delivery/build289/assemble.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Army2HoangGia-2.4.1-Build289-NewSv-unsigned
+          path: ipa-output/*
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 14

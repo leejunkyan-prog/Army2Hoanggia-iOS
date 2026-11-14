@@ -1,0 +1,100 @@
+{
+  "version": 1,
+  "file": "Army2HoangGia-2.4.1-Build290-JarServer-unsigned.ipa",
+  "bytes": 27596613,
+  "sha256": "097cca0d082dabdfca0b88039e32e25e9437b4f067ccadfe3e2bed942d149e7f",
+  "source_commit": "60a821d53500b2489b4c2f309257a0f9a545cc2f",
+  "parts": [
+    {
+      "path": "delivery/build290/parts/part-000",
+      "offset": 0,
+      "size": 786000,
+      "sha": "29df4737076d23b794cc16bb0bd70a8a9f411399",
+      "sha256": "a19ca5a1af66e74f5fc66dfb2a9f7431dc5715cf16963b170308ce7a8496d213"
+    },
+    {
+      "path": "delivery/build290/parts/part-001",
+      "offset": 786000,
+      "size": 2358000,
+      "sha": "e719f726f6ec52317f7b2ffbb947d4891b0a7485",
+      "sha256": "9b9e591267d0debb3aec98052ebfb5b080c8732a4c064fb450c0694d721b304f"
+    },
+    {
+      "path": "delivery/build290/parts/part-002",
+      "offset": 3144000,
+      "size": 2358000,
+      "sha": "1f000af09591d5e767abf8b3a45fb4e3b0bc98e4",
+      "sha256": "3c979d83a1a3f2f9e96b7aa64118732e0d2f5f92c0763a0a3ef3619669bd761c"
+    },
+    {
+      "path": "delivery/build290/parts/part-003",
+      "offset": 5502000,
+      "size": 2358000,
+      "sha": "dc51a0f5a6a48b711cd9e1e61806a5dba9255c46",
+      "sha256": "27c7491aae0fe35a43c39818ecec6b24d5cb783d88d7e3098a37161127f06fae"
+    },
+    {
+      "path": "delivery/build290/parts/part-004",
+      "offset": 7860000,
+      "size": 2358000,
+      "sha": "0c7c6eb22b36ee8db83b442c55405904987add34",
+      "sha256": "e5528a60b89fe92be199d15836d99c321580c7f2d784da09a3792a98d158dd18"
+    },
+    {
+      "path": "delivery/build290/parts/part-005",
+      "offset": 10218000,
+      "size": 2358000,
+      "sha": "3d8dfa0318e3cac02dbeac780e40f3036ba9b76b",
+      "sha256": "77401f5bd6775273dc48fec89504dcf7e1dd26d82b332a1a399d3befb4f6a979"
+    },
+    {
+      "path": "delivery/build290/parts/part-006",
+      "offset": 12576000,
+      "size": 2358000,
+      "sha": "7bab956b58649bbc1b64b9f242f39993ebf0594a",
+      "sha256": "797285acfc4eaff80c7f87975a2f05ada911a832f7ffa5e93d4b99787850f2e5"
+    },
+    {
+      "path": "delivery/build290/parts/part-007",
+      "offset": 14934000,
+      "size": 2358000,
+      "sha": "f47fa9bce5eb3e875c63a9148565589683bc3bce",
+      "sha256": "e26076f80a2ae9328b58baf633743eec8f664c0946590c2c67e3a03489497db4"
+    },
+    {
+      "path": "delivery/build290/parts/part-008",
+      "offset": 17292000,
+      "size": 2358000,
+      "sha": "9bf3dc17d19767120d92b93528401092cdcba541",
+      "sha256": "d642777c0ee4d20b836bd9955a520a4fa641fc06b5fd76340cdc40930c6255c7"
+    },
+    {
+      "path": "delivery/build290/parts/part-009",
+      "offset": 19650000,
+      "size": 2358000,
+      "sha": "9611442042eb260aa87927a10f8a8467aab26853",
+      "sha256": "3ffa9e86a04ee71ea4b4c61e89ecf494cdb09a71145b742ed1a4dbd399ffe12a"
+    },
+    {
+      "path": "delivery/build290/parts/part-010",
+      "offset": 22008000,
+      "size": 2358000,
+      "sha": "6c94862e257c3fe0839682e3a17a732729362fe5",
+      "sha256": "4f0f0bef4e827f6d461aa2348673c97629e3f35dfae2cae0268e0057b0045761"
+    },
+    {
+      "path": "delivery/build290/parts/part-011",
+      "offset": 24366000,
+      "size": 2358000,
+      "sha": "49ffa14691e3e744ed96bc3fd0b3d1755599439d",
+      "sha256": "5f15a9ca7c6ba51cb86b1ec5693cdf9bc16d3dc3945fc2a590edb1f162c00937"
+    },
+    {
+      "path": "delivery/build290/parts/part-012",
+      "offset": 26724000,
+      "size": 872613,
+      "sha": "a9c642398d779fa892b3fd1cd31238249bf507b4",
+      "sha256": "da83bc9c574205727658a2615a8ec745b85664c5b7aecd7514b4400e7ccb6aad"
+    }
+  ]
+}
