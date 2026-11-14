@@ -131,9 +131,14 @@ for v in range(6):
  call('_AGInventoryOrder',E,v,canvas,0,0)
  empty=vector([]);put(pool+0xa8,'<Q',empty);put(screen+0x70,'<Q',empty)
  call('_AGInventoryOrder',E,v,canvas,screen,1);assert displayed(screen)==[]
- many=vector([item(i,100+i)for i in range(40,0,-1)]);put(pool+0xa8,'<Q',many)
+ call('_AGInventoryOrder',E,v,canvas,0,0)
+ many=vector([item(i,100+i)for i in range(40,0,-1)]);put(pool+0xa8,'<Q',many);put(screen+0x70,'<Q',many)
  call('_AGInventoryOrder',E,v,canvas,screen,1);assert displayed(screen)==list(range(1,41))
  assert ids(many)==list(range(40,0,-1))
+ index=24;put(screen+0xc8,'<i',index)
+ put(screen+0x70,'<Q',many)
+ call('_AGInventoryOrder',E,v,canvas,screen,1)
+ selected=get(screen+0x90,'<Q');assert get(selected+0x80,'<q')==25 and get(selected+0x90,'<q')==125
  call('_AGInventoryOrder',E,v,canvas,0,0)
 assert all(n==0 for n in pins.values()),pins
 print('PASS compiled ARM64 bridge: six variants, 600 updates, zero blocking monitor calls, unchanged server vectors, stable unchanged frames, vector replacement, dialog deferral, crafting return, recipe resolution, reopen sorting and balanced JNI roots')
