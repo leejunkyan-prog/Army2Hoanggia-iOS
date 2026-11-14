@@ -1,0 +1,24 @@
+name: Verify Army2 iOS 288 server
+on:
+  workflow_dispatch:
+  push:
+    branches: [qa/ios-288-new-server]
+permissions:
+  contents: read
+jobs:
+  endpoint:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install --quiet unicorn
+      - name: Execute six native ARM64 server initializers
+        run: python native-wheel/verify_endpoint288.py native-wheel/testdata/endpoint288.json --fixture --report endpoint288-check.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Army2HoangGia-Build288-endpoint-check
+          path: endpoint288-check.json
+          retention-days: 14
