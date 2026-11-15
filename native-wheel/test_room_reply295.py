@@ -66,13 +66,13 @@ t.extraNative.update({
 })
 
 previous_vector = None
-for count in (14, 67, 1, 14):
+for count in (14, 67, 130, 1, 14):
     # A reply is room ID followed by every area, without an artificial count
     # limit. A second reply must replace the previous list, never append to it.
     payload = bytes([0])
     for i in range(count):
         name = ('Khu vuc ' + str(i)).encode('utf-8')
-        payload += struct.pack('>bbbBIBH', i, i % 8, 8, i % 3,
+        payload += struct.pack('>BbbBIBH', i, i % 8, 8, i % 3,
                                1000 + i, 0, len(name)) + name + bytes([i % 2])
     t.put(s.c + 0xb8, '<Q', s.back)
     t.put(area_class + 0xd0, '<i', 9)
@@ -84,7 +84,7 @@ for count in (14, 67, 1, 14):
     assert t.get(area_class + 0xd0, '<i') == 0, 'Area selection was not reset'
     assert t.get(area_class + 0xe8, '<B') == 1
     for i, row in enumerate(vectors[installed]):
-        assert t.get(row + 0x1d, '<b') == i
+        assert t.get(row + 0x1d, '<B') == i
         assert t.get(row + 0x1e, '<b') == i % 8
         assert t.get(row + 0x1f, '<b') == 8
         assert t.get(row + 0x1c, '<B') == i % 3
@@ -93,6 +93,6 @@ for count in (14, 67, 1, 14):
         assert t.get(row + 0x20, '<b') == i % 2
     previous_vector = installed
 
-print('PASS unchanged iPhone ARM64 cmd7 room0 reply: complete 14/67/1-area lists, '
+print('PASS unchanged iPhone ARM64 cmd7 room0 reply: complete 14/67/130/1-area lists, '
       'all row fields, replacement replies, selection reset and native screen activation')
 

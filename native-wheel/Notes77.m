@@ -9,6 +9,7 @@
 #include <stdlib.h>
 #include "Notes77.h"
 #include "Spectator.h"
+#include "ReturnDiagnostics.h"
 #include "SpectatorWait.h"
 #include "Lobby.h"
 #include "NotesMap.h"
@@ -259,9 +260,9 @@ __attribute__((visibility("default"))) int AGNotesReceive(void *env,void *messag
 // Native input guards close the short interval before UIKit presents its modal.
 __attribute__((visibility("default"))) int AGNotesInput(int variant,int kind,int a,int b){
     if(variant<0||variant>=6)return 0;
-    if(AGViewerInput(variant,kind,a)){NClear(variant);return 1;}
-    if(AGLobbyInput(variant,kind,a,b)){NClear(variant);return 1;}
-    if(!atomic_load(&NInitialized)){int wheel=AGWheelInput(variant,kind,a,b);if(wheel)NClear(variant);return wheel;}
+    if(AGViewerInput(variant,kind,a)){AGReturnInput(variant,kind,a,1);NClear(variant);return 1;}
+    if(AGLobbyInput(variant,kind,a,b)){AGReturnInput(variant,kind,a,2);NClear(variant);return 1;}
+    if(!atomic_load(&NInitialized)){int wheel=AGWheelInput(variant,kind,a,b);AGReturnInput(variant,kind,a,wheel?3:0);if(wheel)NClear(variant);return wheel;}
     int room=NRoom(variant),consumed=0,inbox=0;pthread_mutex_lock(&NMutex);NModel *m=&NModels[variant];
     AGCaptchaContext(&m->cap,m->cap.boss,room);
     if(m->cap.active){consumed=1;if(kind<2)AGCaptchaKey(&m->cap,a,kind==1,NNow());}
@@ -272,7 +273,7 @@ __attribute__((visibility("default"))) int AGNotesInput(int variant,int kind,int
     if(consumed&&kind==2)m->heldPointer=1;
     if(!consumed)consumed=AGWheelInput(variant,kind,a,b);
     if(consumed)NClear(variant);else atomic_store(&NCurrent,variant);
-    pthread_mutex_unlock(&NMutex);if(inbox&&kind==0)dispatch_async(dispatch_get_main_queue(),^{NInboxKey(a);});return consumed;
+    pthread_mutex_unlock(&NMutex);AGReturnInput(variant,kind,a,consumed?3:0);if(inbox&&kind==0)dispatch_async(dispatch_get_main_queue(),^{NInboxKey(a);});return consumed;
 }
 typedef struct {int variant,x,y;void *graphics;char value[80];} NPaintJob;
 static void NDraw(void *env,void *font,void *g,const char *text,int x,int y,int anchor,int variant){
@@ -496,6 +497,7 @@ __attribute__((visibility("default"))) void AGNotesPreviewCheck(void){
 
 
 int AGNotesBlocksAuto(int v){if(v<0||v>=6)return 1;pthread_mutex_lock(&NMutex);int blocked=NModels[v].cap.active||NModels[v].inboxVisible||AGViewerActive(v);pthread_mutex_unlock(&NMutex);return blocked;}
+
 
 
 

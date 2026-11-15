@@ -17,6 +17,7 @@
 #include "WatchTrace.h"
 #include "SpectatorNative.h"
 #include "Spectator.h"
+#include "ReturnDiagnostics.h"
 #import "GameViewport.h"
 extern void AGInventoryTick(void *,int);
 
@@ -99,6 +100,10 @@ __attribute__((noinline,optnone)) static int AGSendNative(void *env, void *conte
 }
 
 __attribute__((visibility("default"))) void AGWheelTick(void *env, int variant) {
+    if(env)AGReturnPulse(variant,0);
+#ifdef AG_RETURN_DIAGNOSTIC
+    if(env&&AGReturnShouldSample(variant))AGNativeWatchReturnDiagnostic(env,variant);
+#endif
     if(env){AGViewportCapture(env,variant);AGInventoryTick(env,variant);AGBlindTick(variant);}
     AGNotesTick(env,variant);
     AGShipTraceTick(env,variant,0);
@@ -443,6 +448,7 @@ __attribute__((visibility("default"))) void AGWheelPreviewCheckInterface(void){
     [json writeToFile:[directory stringByAppendingPathComponent:@"ui-check.json"] atomically:YES];
 }
 #endif
+
 
 
 

@@ -7,6 +7,7 @@
 #include <time.h>
 #include "SpectatorNative.h"
 #include "Spectator.h"
+#include "ReturnDiagnostics.h"
 #ifdef AG_WHEEL_PREVIEW
 int AGNativeWatchAvailable(void){return 0;}
 int AGNativeWatchFree(int v){return 0;}
@@ -325,6 +326,48 @@ int AGNativeWatchRoomStatus(void *e,int v){
     if(!e||v<0||v>=6)return -1;
     return guard(e,roomStatus,&v);
 }
+#ifdef AG_RETURN_DIAGNOSTIC
+typedef struct {int v;int values[RD_COUNT];} ReturnSample;
+static int returnSample(void *e,void *opaque){
+    ReturnSample *j=opaque;int v=j->v,*d=j->values;
+    static const uintptr_t classes[6]={0x2089f70,0x20b8f10,0x20e6c00,0x21148f0,0x21425e0,0x21702d0};
+    uint8_t *canvas=global(AGNotesMaps[v].canvas);if(!canvas)return 0;
+    uint8_t *screen=*(uint8_t **)(canvas+0xb8),*klass=global(classes[v]);
+    uint8_t *area=klass?*(uint8_t **)(klass+0xa0):NULL;
+    uint8_t *arena=global(AGTurnMaps[v].arena_class),*room=global(AGNotesMaps[v].room_class);
+    d[RD_SCREEN]=!screen?0:screen==area?1:arena&&screen==*(uint8_t **)(arena+0xe8)?2:room&&*(void **)screen==room?3:4;
+    d[RD_ROWS]=-1;d[RD_ROOM]=-1;d[RD_FIRST_ID]=d[RD_LAST_ID]=-1;
+    if(klass){
+        d[RD_VISIBLE]=klass[0xe9];d[RD_ANIMATED]=klass[0xe8];
+        d[RD_SELECTED]=*(int *)(klass+0xd0);d[RD_SCROLL_TARGET]=*(int *)(klass+0xd4);
+        d[RD_SCROLL_CURRENT]=*(int *)(klass+0xd8);d[RD_SCROLL_MAX]=*(int *)(klass+0xe4);
+        uint8_t *rows=*(uint8_t **)(klass+0xc0);
+        if(rows){
+            int n=*(int *)(rows+0x24);d[RD_ROWS]=n;
+            uint8_t *array=*(uint8_t **)(rows+0x18);
+            if(array&&n>0&&n<=4096&&n<=*(int *)(array+0x10)){
+                uint8_t *first=*(uint8_t **)(array+0x18),*last=*(uint8_t **)(array+0x18+(size_t)(n-1)*8);
+                if(first)d[RD_FIRST_ID]=first[0x1d];if(last)d[RD_LAST_ID]=last[0x1d];
+            }
+        }
+    }
+    if(area){d[RD_TRANSITION]=*(int *)(area+0x44);d[RD_ROOM]=area[0x4d];}
+    d[RD_DIALOG]=*(void **)(canvas+0x108)!=NULL;d[RD_FLASH]=canvas[0x13c];
+    d[RD_POINTER_DOWN]=canvas[0x140];d[RD_POINTER_UP]=canvas[0x141];
+    d[RD_WIDTH]=*(int *)(canvas+0x130);d[RD_HEIGHT]=*(int *)(canvas+0x128);
+    d[RD_CANVAS_STEP]=*(int *)(canvas+0x124);
+    for(int k=0;k<2;k++){
+        uint8_t *keys=*(uint8_t **)(canvas+0xa0+k*8);int count=keys?*(int *)(keys+0x10):0;
+        if(count>=0&&count<=64)for(int i=0;i<count;i++)d[k?RD_RELEASED:RD_PRESSED]+=keys[0x14+i]!=0;
+    }
+    d[RD_OK]=1;return 1;
+}
+void AGNativeWatchReturnDiagnostic(void *e,int v){
+    if(!e||v<0||v>=6)return;
+    ReturnSample sample={.v=v};int ok=guard(e,returnSample,&sample);
+    if(ok<=0)sample.values[RD_OK]=ok;AGReturnPublish(v,sample.values);
+}
+#endif
 typedef struct {int v;uint8_t *player;int64_t hp;} ReplayHP;
 static int replayHP(void *e,void *opaque){
     ReplayHP *j=opaque;
@@ -563,6 +606,10 @@ static int renderUpdate(void *e,void *opaque){
 extern void AGTurnPulse(void *,int);
 void AGNativeWatchRenderFrame(void *e,int v){
     if(!e||v<0||v>=6)return;
+    AGReturnPulse(v,1);
+#ifdef AG_RETURN_DIAGNOSTIC
+    if(AGReturnShouldSample(v))AGNativeWatchReturnDiagnostic(e,v);
+#endif
     /* A render Env belongs to the attached game thread. Never call native
        Java routines from UIKit timers or reuse another thread's Env. */
     AGViewerTick(e,v);
