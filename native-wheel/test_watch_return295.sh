@@ -7,13 +7,13 @@ app="$PWD/build/WatchReturn295-$mode.app"
 mkdir -p "$app/viewer"
 cp -R viewer/. "$app/viewer/"
 sdk="$(xcrun --sdk iphonesimulator --show-sdk-path)"
-extra=()
-if [ "$mode" = baseline ]; then extra+=('-DWATCH_PRODUCTION="SpectatorBaseline294.m"'); fi
+set --
+if [ "$mode" = baseline ]; then set -- '-DWATCH_PRODUCTION="SpectatorBaseline294.m"'; fi
 xcrun --sdk iphonesimulator clang -arch arm64 -isysroot "$sdk" \
  -mios-simulator-version-min=18.0 -fobjc-arc -fblocks -O1 \
  -Wno-deprecated-declarations -Wno-nullability-completeness \
  -framework UIKit -framework Foundation -framework WebKit -framework CoreGraphics -framework QuartzCore \
- "${extra[@]}" WatchSurface.m test_watch_return295.m -o "$app/WatchReturn295"
+ "$@" WatchSurface.m test_watch_return295.m -o "$app/WatchReturn295"
 python3 - "$app" "$mode" <<'PY'
 import plistlib,sys
 from pathlib import Path
