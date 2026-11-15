@@ -6,7 +6,8 @@ app="$PWD/build/WatchOverlay293.app"
 sdk="$(xcrun --sdk iphonesimulator --show-sdk-path)"
 xcrun --sdk iphonesimulator clang -arch arm64 -isysroot "$sdk" \
  -mios-simulator-version-min=18.0 -fobjc-arc -O1 -Wno-deprecated-declarations \
- -framework UIKit -framework Foundation WatchSurface.m test_watch_overlay293.m \
+ -framework UIKit -framework Foundation -framework CoreGraphics -framework QuartzCore \
+ WatchSurface.m test_watch_overlay293.m \
  -o "$app/WatchOverlay293"
 python3 - <<'PY'
 import plistlib
