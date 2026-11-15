@@ -1,4 +1,5 @@
 #include <stdint.h>
+#include <time.h>
 #include <mach-o/dyld.h>
 #include "NativeMap.h"
 #include "NotesMap.h"
@@ -6,6 +7,7 @@
 #include "ShipTrace.h"
 #include "Spectator.h"
 #include "SpectatorNative.h"
+#include "WatchTrace.h"
 extern int AGWheelGuard(void *,int (*)(void *,void *),void *,void *);
 extern void AGTurnAwait(void *,void *,int,int,int);
 typedef struct {
@@ -57,6 +59,23 @@ static int busy(const BattleWaitContext *c,int kind,int actor){
     }
     return 0;
 }
+static uint64_t watchNanos(void){
+    struct timespec t;
+    if(clock_gettime(CLOCK_MONOTONIC,&t))return 0;
+    return (uint64_t)t.tv_sec*1000000000+(uint64_t)t.tv_nsec;
+}
+static volatile uint8_t *watchFlag(const BattleWaitContext *c,int kind,int slot){
+    if(kind==0)return c->projectiles?c->projectiles+0x118:0;
+    if(kind==1)return c->canvas?c->canvas+0x13c:0;
+    if((kind==2||kind==3)&&c->players){
+        int count=*(int *)(c->players+0x10);
+        if(slot>=0&&slot<count&&count<=127){
+            uint8_t *p=*(uint8_t **)(c->players+0x18+slot*8);
+            if(p)return p+(kind==2?0x167:0x14e);
+        }
+    }
+    return 0;
+}
 __attribute__((visibility("default"))) void AGBattleAwait(void *env,void *lock,int v,int kind,int actor){
     if(!env||!lock||v<0||v>=6)return;
     BattleWaitContext c={.variant=v};
@@ -77,17 +96,35 @@ __attribute__((visibility("default"))) void AGBattleAwait(void *env,void *lock,i
     }
     if(!active(&c))return;
     uint8_t *arena=c.arena;uintptr_t connection=c.connection;
+    uint8_t *roster=c.players;
+    volatile uint8_t *flag=watching?watchFlag(&c,kind,actor):0;
+    uint64_t started=watching?watchNanos():0;
+    if(watching)AGNativeWatchTraceWait(v,kind,actor,1);
     if(!watching){AGShipTraceWait(v,kind,actor,1);AGShipTraceTick(env,v,2);}
     // A fast B52 can finish and notify before the controller acquires its
     // monitor. Recheck the real completion flag before waiting, and after
     // each wake. No timer clears flags or forces the next player's turn.
     while((!watching||AGViewerStillWatching(v))&&busy(&c,kind,actor)){
+        /* Match the supplied APK's Wait106: a stalled animation cannot
+           block the spectator receive stream indefinitely. Expiry clears
+           only the same completion flag; it never grants or invents turns. */
+        if(watching&&started){
+            uint64_t time=watchNanos();
+            if(time>=started&&time-started>=30000000000ULL){
+                if(flag)*flag=0;
+                AGNativeWatchTraceWait(v,kind,actor,3);
+                return;
+            }
+        }
         void (*wait)(void *,void *,int64_t)=(void *)(imageBase()+0xaaa730);
         wait(env,lock,16);
         if(!watching)AGShipTraceTick(env,v,2);
         c=(BattleWaitContext){.variant=v};
         if(context(env,&c)<=0||!active(&c)||(!watching&&!c.airship)||c.arena!=arena||c.connection!=connection)break;
+        /* A re-entered scene must not release a different roster's flag. */
+        if(watching&&(kind==2||kind==3)&&(c.players!=roster||watchFlag(&c,kind,actor)!=flag))break;
     }
+    if(watching)AGNativeWatchTraceWait(v,kind,actor,2);
     if(!watching)AGShipTraceWait(v,kind,actor,0);
 }
 

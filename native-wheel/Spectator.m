@@ -5,6 +5,7 @@
 #include <string.h>
 #include "Spectator.h"
 #include "SpectatorNative.h"
+#include "WatchTrace.h"
 #include "Lobby.h"
 #import "GameViewport.h"
 
@@ -33,6 +34,7 @@ typedef NS_ENUM(int, WatchReceive) { PassToGame, Consumed, Snapshot, MatchEnded,
 @property(nonatomic) BOOL keypadCaptured;
 @property(nonatomic) int shownAngle;
 @property(nonatomic) int switchToPB;
+@property(nonatomic) NSTimeInterval traceSavedAt;
 - (void)show;
 - (void)close;
 - (void)flush;
@@ -77,14 +79,11 @@ int AGViewerInput(int variant,int kind,int code) {
         if(watch.phase==InMatch&&AGNativeWatchAux(variant))return 0;
         BOOL repeated=kind==0&&index<256&&heldKeys[variant][index];
         if(kind==0&&index<256)heldKeys[variant][index]=true;
-        if(repeated&&code==-6)return 1;
+        if(repeated&&(code==-6||code==-7||code==-21||code==-22))return 1;
         if(kind==0&&watch.phase==InMatch&&watch.snapshotReceived){
-            // The left softkey and the F1 pad button are distinct routes.
-            // F1 sends -6, while the MIDP left softkey also sends -21.
-            if(code==-6&&!watch.menuVisible){
-                dispatch_async(dispatch_get_main_queue(),^{updateCamera(watch);});
-                return 1;
-            }
+            // Native pad: F1=-6 / F2=-7. Hardware aliases are -21/-22.
+            // Both pairs go through watchKey: left opens Menu, right Camera,
+            // with the normal select/back behavior when a menu is open.
             BOOL direction=(code>=-4&&code<=-1)||code=='2'||code=='4'||code=='6'||code=='8';
             if(direction&&AGNativeWatchFree(variant)&&!watch.menuVisible)
                 AGNativeWatchCamera(variant,kind,code);
@@ -99,9 +98,9 @@ int AGViewerInput(int variant,int kind,int code) {
         @synchronized(ArmyWatch.class){if(current!=watch)return;}
         if(watch.webReady){
             [watch.web evaluateJavaScript:[NSString stringWithFormat:@"watchKey(%d)",code] completionHandler:nil];
-        }else if(code==-6||code==-5||code==-21||code=='L'||code=='l'||code==13||code==10||code=='5'||code=='F'||code=='f'){
+        }else if(watch.phase==Offered&&(code==-6||code==-5||code==-21||code=='L'||code=='l'||code==13||code==10||code=='5'||code=='F'||code=='f')){
             [watch accept];
-        }else if(code==-7||code==-22||code==-11||code=='R'||code=='r'||code==27){
+        }else if(watch.phase==Offered&&(code==-7||code==-22||code==-11||code=='R'||code=='r'||code==27)){
             [watch cancel];
         }
     });
@@ -278,6 +277,11 @@ static WatchReceive receiveState(void *env,void *message,int variant,NSData *__s
 }
 int AGViewerReceive(void *env,void *message,int variant){
     @autoreleasepool {
+        if(env&&message&&variant>=0&&variant<6&&AGViewerActive(variant)){
+            int cmd=*(const int8_t *)((const uint8_t *)message+0x30),op=-1;
+            if(cmd==-102){NSData *body=readBody(message);if(body.length>=4)op=((const uint8_t *)body.bytes)[3];}
+            AGNativeWatchTracePacket(variant,cmd,op);
+        }
         NSData *packet=nil;ArmyWatch *owner=nil;
         WatchReceive result=receiveState(env,message,variant,&packet,&owner);
         if(result==PassToGame||result==Consumed)return result;
@@ -464,6 +468,7 @@ void AGViewerTick(void *env,int variant) {
 - (void)accept {
     @synchronized(ArmyWatch.class){
         if(current!=self||self.phase!=Offered)return;
+        AGNativeWatchTraceReset(self.variant);
         self.phase=WaitingForMatch;self.action=Accept;self.deadline=now()+15;
     }
     [self show];
@@ -471,6 +476,19 @@ void AGViewerTick(void *env,int variant) {
 - (void)cancel {@synchronized(ArmyWatch.class){if(current==self)leave(self);}}
 - (void)checkDeadline {
     @synchronized(ArmyWatch.class){if(current==self)advanceWatch(self,now());}
+    if(now()-self.traceSavedAt<1)return;
+    self.traceSavedAt=now();
+    AGWatchTrace trace;if(!AGNativeWatchTraceCopy(self.variant,&trace))return;
+    NSDictionary *report=@{@"build":@292,@"pb":@(self.variant+1),@"phase":@(self.phase),
+        @"snapshot_ready":@(self.snapshotReceived),@"native_running":@(AGNativeWatchRunning(self.variant)),
+        @"scene_entries":@(trace.frames),@"received_packets":@(trace.packets),
+        @"last_command":@(trace.command),@"last_snapshot_operation":@(trace.operation),
+        @"wait_count":@(trace.waits),@"wait_kind":@(trace.waitKind),@"wait_actor":@(trace.waitActor),
+        @"wait_stage":@(trace.waitStage),@"wait_expirations":@(trace.expirations),
+        @"scene_exceptions":@(trace.exceptions),@"first_exception":[NSString stringWithUTF8String:trace.exception]?:@""};
+    NSData *data=[NSJSONSerialization dataWithJSONObject:report options:NSJSONWritingPrettyPrinted error:nil];
+    NSString *directory=NSSearchPathForDirectoriesInDomains(NSDocumentDirectory,NSUserDomainMask,YES).firstObject;
+    if(data&&directory)[data writeToFile:[directory stringByAppendingPathComponent:@"Watch292-diagnostic.json"] atomically:YES];
 }
 - (void)close {
     [self.watchdog invalidate];self.watchdog=nil;

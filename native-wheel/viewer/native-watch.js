@@ -50,7 +50,6 @@ window.watchKey=key=>{
  }
  if(phase===1&&code===-7){send('leave');return;}
  if(phase!==2||nativeMenu)return;
- if(key===-6&&!menu){send('camera');return;}
  if(menu){
   const list=options();
   if(code===-1||code===-3)selection=(selection+list.length-1)%list.length;
@@ -93,9 +92,8 @@ ui.start(()=>{
  if(phase===2){
   if(nativeMenu)return;
   ui.text('Đang xem',5,15,{max:100});
-  if(angle>=0){
-   ui.text('Góc: '+angle,160,27,{align:'center',color:'#fff',outline:true,max:54});
-  }
+  // The native HUD already paints the angle, as on APK. Drawing a second
+  // label here overlays two different glyph positions on the iPhone.
   if(free&&!menu)cameraControls();
   ui.zone(0,0,44,40,()=>openMenu('main'));
   ui.zone(45,0,24,38,()=>nativeAction(5));

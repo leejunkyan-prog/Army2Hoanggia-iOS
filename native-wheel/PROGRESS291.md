@@ -1,5 +1,7 @@
 # Build291: spectator update loop and APK spectator state
 
+> Build292 audit correction: the modal branch discussed below routes input; the real scene update executes earlier. The prior modal regression did not prove a live-animation fix. See PROGRESS292.md.
+
 Base: exact user-supplied Build290 JAR-server IPA,
 SHA256 `097cca0d082dabdfca0b88039e32e25e9437b4f067ccadfe3e2bed942d149e7f`.
 Reference APK `gs5kl1.apk`, SHA256

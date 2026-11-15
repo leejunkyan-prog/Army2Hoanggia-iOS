@@ -1,0 +1,117 @@
+name: Build Army2 iOS 292 spectator live playback
+on:
+  workflow_dispatch:
+  push:
+    branches: [fix/ios-292-live-spectator]
+permissions:
+  contents: read
+concurrency:
+  group: game-ui-292
+  cancel-in-progress: true
+jobs:
+  framework:
+    permissions:
+      contents: write
+    runs-on: macos-26
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compile iPhone ARM64 framework
+        run: bash native-wheel/build_292.sh
+      - name: Restore exact Build290 native executable for regressions
+        shell: bash
+        run: |
+          GITHUB_STEP_SUMMARY= python3 delivery/build290/assemble.py
+          unzip -p ipa-output/Army2HoangGia-2.4.1-Build290-JarServer-unsigned.ipa \
+            Payload/Army2Hoanggia.app/Army2Hoanggia > native-wheel/build/base290-native
+      - name: Execute compiled ARM64 regressions
+        shell: bash
+        run: |
+          python3 -m venv native-wheel/build/device-qa
+          native-wheel/build/device-qa/bin/pip install --quiet lief unicorn capstone
+          py=native-wheel/build/device-qa/bin/python
+          bin=native-wheel/build/QA/AGWheel.framework/AGWheel
+          status=0
+          for test in test_native_watch test_inventory_device282 test_recipe_reentry286 test_snapshot_flash286 test_watch_room_transition287 test_watch_cold_start287 test_recipe_dialog289 test_snapshot_barrier289; do
+            "$py" "native-wheel/$test.py" "$bin" > "native-wheel/build/$test.txt" 2>&1 || status=1
+            cat "native-wheel/build/$test.txt"
+          done
+          shopt -s nullglob
+          for test in native-wheel/test_*291.py native-wheel/test_*292.py; do
+            name="$(basename "$test" .py)"
+            "$py" "$test" "$bin" > "native-wheel/build/$name.txt" 2>&1 || status=1
+            cat "native-wheel/build/$name.txt"
+          done
+          exit "$status"
+      - name: Package and verify Build292 IPA
+        shell: bash
+        run: |
+          py=native-wheel/build/device-qa/bin/python
+          target=ipa-output/Army2HoangGia-2.4.1-Build292-SpectatorLive-unsigned.ipa
+          "$py" native-wheel/package_292.py \
+            ipa-output/Army2HoangGia-2.4.1-Build290-JarServer-unsigned.ipa \
+            native-wheel/build/framework-292.zip "$target"
+          "$py" native-wheel/verify_endpoint290.py "$target" \
+            --report ipa-output/endpoint292-check.json
+          shasum -a 256 "$target" > ipa-output/Build292-SHA256SUMS.txt
+      - name: Save verified framework and regression logs through GitHub Git transport
+        shell: bash
+        run: |
+          delivery_ref=refs/heads/delivery/ios-292-live-spectator
+          delivery_worktree="$RUNNER_TEMP/army292-delivery-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          remote_tip="$(git ls-remote origin "$delivery_ref")"
+          starting_ref=HEAD
+          if [ -n "$remote_tip" ]; then
+            git fetch --depth=1 origin "$delivery_ref"
+            starting_ref=FETCH_HEAD
+          fi
+          git worktree add --detach "$delivery_worktree" "$starting_ref"
+          trap 'git worktree remove --force "$delivery_worktree"' EXIT
+          mkdir -p "$delivery_worktree/delivery/build292"
+          rm -f "$delivery_worktree"/delivery/build292/test_*.txt
+          cp native-wheel/build/framework-292.zip "$delivery_worktree/delivery/build292/"
+          cp native-wheel/build/test_*.txt "$delivery_worktree/delivery/build292/"
+          git -C "$delivery_worktree" add -A -- \
+            delivery/build292/framework-292.zip 'delivery/build292/test_*.txt'
+          if ! git -C "$delivery_worktree" diff --cached --quiet; then
+            git -C "$delivery_worktree" \
+              -c user.name='github-actions[bot]' \
+              -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+              commit -m "Deliver Build292 framework from $GITHUB_SHA [skip ci]"
+            git -C "$delivery_worktree" push origin "HEAD:$delivery_ref"
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Army2HoangGia-2.4.1-Build292-SpectatorLive-unsigned
+          path: |
+            ipa-output/Army2HoangGia-2.4.1-Build292-SpectatorLive-unsigned.ipa
+            ipa-output/Army2HoangGia-2.4.1-Build292-SpectatorLive-unsigned.validation.json
+            ipa-output/endpoint292-check.json
+            ipa-output/Build292-SHA256SUMS.txt
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Army2HoangGia-Build292-framework
+          path: |
+            native-wheel/build/framework-292.zip
+            native-wheel/build/test_*.txt
+          if-no-files-found: error
+          retention-days: 14
+  interface:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --no-save playwright
+      - run: npx playwright install --with-deps chromium
+      - run: node native-wheel/test_lobby.js
+      - run: node native-wheel/test_native_watch_ui.js

@@ -35,14 +35,27 @@ const {chromium}=require('playwright');
   await press(13);assert.equal(await last(),'accept');
   await press(-6);assert.equal(await page.evaluate(()=>sent.filter(x=>x==='accept').length),1);
   await setPhase(1);await press(-22);assert.equal(await last(),'leave');
-  await setPhase(2);await press(-21);assert.equal(await last(),'menuOpen');
+  await setPhase(2);await press(-6);assert.equal(await last(),'menuOpen','Native F1 opens the spectator menu');
   assert.deepEqual(await page.evaluate(()=>options().map(x=>x[0])),[
    'TIẾP TỤC','LỰC MAX','V9 MENU','BẬT/TẮT ICON ĐỘI','BẠN BÈ','TIN NHẮN','RỜI TRẬN CHIẾN']);
   assert.equal(await page.evaluate(()=>sent.filter(x=>x==='leave').length),1);
   await press(13);assert.equal(await last(),'menuClosed');
-  await press(-6);assert.equal(await last(),'camera');
-  await page.evaluate(()=>{watchCameraMode(true);watchAngle(247);});
+  assert.equal(await page.evaluate(()=>sent.filter(x=>x==='camera').length),0,'F1 must never toggle camera');
+  await press(-7);assert.equal(await last(),'camera','Native F2 toggles the spectator camera');
+  await press(-21);assert.equal(await last(),'menuOpen','Hardware F1 alias opens the same menu');
+  await press(-22);assert.equal(await last(),'menuClosed','F2 closes an open menu without switching camera');
+  assert.equal(await page.evaluate(()=>sent.filter(x=>x==='camera').length),1);
+  await press(-22);assert.equal(await last(),'camera','Hardware F2 alias toggles camera outside a menu');
+  await page.keyboard.press('F1');assert.equal(await last(),'menuOpen','Desktop F1 uses the same route as the native pad');
+  await page.keyboard.press('F2');assert.equal(await last(),'menuClosed');
+  await page.keyboard.press('F2');assert.equal(await last(),'camera','Desktop F2 toggles camera');
+  await page.evaluate(()=>{
+   window.angleLabels=[];const text=PixelUI.text;
+   PixelUI.text=(label,...args)=>{if(label.startsWith('Góc:'))angleLabels.push(label);return text(label,...args);};
+   watchCameraMode(true);watchAngle(247);
+  });
   await page.waitForTimeout(60);
+  assert.deepEqual(await page.evaluate(()=>angleLabels),[],'Overlay must not duplicate the native angle label');
   await page.keyboard.down('ArrowRight');
   assert.deepEqual(await last(),['key',0,-4]);
   await page.keyboard.up('ArrowRight');
@@ -53,6 +66,6 @@ const {chromium}=require('playwright');
   await page.waitForTimeout(70);await page.mouse.click(72*390/320+44,60);
   assert.deepEqual(await last(),['pb',2]);
   assert.deepEqual(errors,[]);
-  console.log('PASS spectator controls: transparent confirmation, left/OK and decline, ordered in-match menu, camera, leave and PB selector.');
+  console.log('PASS spectator controls: native/desktop F1 Menu and F2 Camera, hardware aliases, menu select/back, transparent confirmation, free-camera directions, leave and PB selector.');
  }finally{if(browser)await browser.close();await new Promise(resolve=>server.close(resolve));}
 })().catch(e=>{console.error(e);process.exitCode=1;});

@@ -1,8 +1,8 @@
-"""Reproduce a stale loading modal stopping the original battle update route.
+"""Check loading-modal cleanup and original native input routing.
 
 Execute the original Build290 GameCanvas branch and native screen methods,
 then the compiled spectator adapter over all six PBs. Resource creation and
-JNI remain fixtures. The regression proves update routing, not device visuals.
+JNI remain fixtures. GameCanvas scene.update executes earlier; this branch routes input only.
 """
 import base64
 from hashlib import sha256
@@ -61,12 +61,12 @@ def dialog_tick():
 
 
 def finish_modal():
-    route.append('skip scene.update')
+    route.append('skip battle input')
     t.u.emu_stop()
 
 
 def enter_scene():
-    route.append('scene.update branch')
+    route.append('battle input branch')
     t.u.emu_stop()
 
 
@@ -90,7 +90,7 @@ t.put(canvas + 0x108, '<Q', modal)
 native_show(arena, back)
 assert t.get(canvas + 0xb8, '<Q') == arena
 assert t.get(canvas + 0x108, '<Q') == modal, 'Baseline changed: original show already clears modal'
-assert frame_route() == ['dialog.update', 'skip scene.update'], 'Baseline must reproduce the frozen battle route'
+assert frame_route() == ['dialog.update', 'skip battle input'], 'Baseline routes input to the modal'
 t.put(canvas + 0xb8, '<Q', back)
 t.put(canvas + 0x108, '<Q', 0)
 
@@ -109,9 +109,9 @@ for variant in range(6):
                 assert t.packet(variant, packet) == 1
                 if packet[3] in (5, 7):
                     assert t.get(canvas + 0xb8, '<Q') == t.get(a + 0xe8, '<Q')
-                    assert t.get(canvas + 0x108, '<Q') == 0, 'Snapshot leaves the native modal blocking updates'
+                    assert t.get(canvas + 0x108, '<Q') == 0, 'Snapshot leaves the native modal blocking battle input'
                     if variant == 0:
-                        assert frame_route() == ['scene.update branch']
+                        assert frame_route() == ['battle input branch']
             elif command in (8, 24, 22):
                 t.observe(variant, command, packet)
         # Opening an auxiliary dialog during a live match remains supported.
@@ -138,4 +138,4 @@ for variant in range(6):
     assert t.get(canvas + 0x108, '<Q') == unrelated
     t.call('_AGNativeWatchEnd', t.ENV, variant)
 
-print('PASS original GameCanvas modal freeze reproduced; compiled snapshot clears stale modal, resumes scene-update route, six PBs/re-entry; live and canceled unrelated dialogs preserved')
+print('PASS original GameCanvas modal input routing; compiled snapshot clears stale modal, restores battle input, six PBs/re-entry; live and canceled unrelated dialogs preserved')
