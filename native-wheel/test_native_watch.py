@@ -69,6 +69,7 @@ for v,mp in enumerate(maps):
     native[MAIN+services[v]]=('service',v)
     serviceObjects.append(service)
     for k in ('arenaNew','arenaInit','mapNew','mapInit','start','show','restore','clockSet','clockReset'):native[MAIN+mp[k]]=(k,v)
+    native[MAIN+mp['restore']-0x38]=('restore',v)
     native[MAIN+mp['slots']]=('slots',v)
     native[MAIN+tileNew[v]]=('tileNew',v);native[MAIN+tileInit[v]]=('tileInit',v);native[MAIN+reset[v]]=('reset',v)
 def hook(uc,pc,size,_):
@@ -246,5 +247,6 @@ for v in range(6):
 assert len(started)==len(shown)==len(restored)==12
 assert all(n==0 for n in pins.values()),pins
 print('PASS compiled iPhone ARM64: six variants, snapshot-only presentation, map/HP/positions, independent destructible terrain, camera, nonblocking leave, lost-notify recovery and reopening')
+
 
 

@@ -39,6 +39,9 @@ typedef NS_ENUM(int, WatchReceive) { PassToGame, Consumed, Snapshot, MatchEnded,
 @property(nonatomic) NSTimeInterval roomReturnRetryAt;
 @property(nonatomic) int roomReturnAttempts;
 @property(nonatomic) BOOL roomReturnSent;
+@property(nonatomic) BOOL roomReplyReceived;
+@property(nonatomic) int roomReplyRows;
+@property(nonatomic) BOOL roomReturnComplete;
 - (void)show;
 - (void)close;
 - (void)flush;
@@ -58,6 +61,7 @@ static atomic_int pendingPB[6];
 static ArmyWatch *pendingLeave[6];
 static ArmyWatch *closingWatch[6];
 static ArmyWatch *pendingRoomReturn[6];
+static atomic_bool tickBusy[6];
 int AGViewerActive(int v){
     return v>=0&&v<6&&(atomic_load(&active)&&atomic_load(&activeVariant)==v);
 }
@@ -230,9 +234,10 @@ static WatchReceive receiveState(void *env,void *message,int variant,NSData *__s
                 if(n<4||p[0]!=0x53||p[1]!=0x50||p[2]!=1)return 1;
                 if(p[3]==0) {
                     if(n<16 || p[4]>1 || n!=16+(NSUInteger)(p[14]*256+p[15]))return 1;
-                    if((w&&w.phase!=Offered)||atomic_load(&nativeCleanup[variant])||pendingRoomReturn[variant])return 1;
+                    if((w&&w.phase!=Offered)||atomic_load(&nativeCleanup[variant]))return 1;
                     uintptr_t conn=AGViewerConnection(env,variant);
                     if(!conn)return 1;
+                    pendingRoomReturn[variant]=nil;
                     uintptr_t wait=AGViewerWaitToken(variant);
                     if(wait)atomic_store(&nativeWait[variant],wait);
                     BOOL battlefield=battlefieldUntil[variant]>now()&&battlefieldSession[variant]==conn;
@@ -283,6 +288,21 @@ static WatchReceive receiveState(void *env,void *message,int variant,NSData *__s
 }
 int AGViewerReceive(void *env,void *message,int variant){
     @autoreleasepool {
+        if(env&&message&&variant>=0&&variant<6&&*(int8_t *)((uint8_t *)message+0x30)==7){
+            NSData *body=readBody(message);
+            const uint8_t *bytes=body.bytes;size_t length=body.length,pos=1;int rows=0;
+            if(length&&bytes[0]==0){
+                while(length-pos>=12){
+                    size_t text=(size_t)bytes[pos+9]*256+bytes[pos+10];
+                    if(text>length-pos-12)break;
+                    pos+=12+text;rows++;
+                }
+                @synchronized(ArmyWatch.class){
+                    ArmyWatch *returning=pendingRoomReturn[variant];
+                    if(returning&&pos==length){returning.roomReplyRows=rows;returning.roomReplyReceived=rows>0;}
+                }
+            }
+        }
         if(env&&message&&variant>=0&&variant<6&&AGViewerActive(variant)){
             int cmd=*(const int8_t *)((const uint8_t *)message+0x30),op=-1;
             if(cmd==-102){NSData *body=readBody(message);if(body.length>=4)op=((const uint8_t *)body.bytes)[3];}
@@ -336,7 +356,7 @@ int AGViewerReceive(void *env,void *message,int variant){
         return 1;
     }
 }
-void AGViewerTick(void *env,int variant) {
+static void viewerTick(void *env,int variant) {
     if(!env||variant<0||variant>=6)return;
     if(atomic_load(&nativeCleanup[variant])&&!atomic_load(&snapshotCalls[variant])&&AGNativeWatchTryEnd(env,variant))
         atomic_store(&nativeCleanup[variant],false);
@@ -361,21 +381,27 @@ void AGViewerTick(void *env,int variant) {
         if(closing&&!closing.battlefield&&!closing.switchToPB&&
            closing.phase!=Offered&&closing.action!=Accept)pendingRoomReturn[variant]=closing;
         ArmyWatch *queued=pendingRoomReturn[variant];
-        if(queued&&now()>=queued.roomReturnRetryAt){returning=queued;pendingRoomReturn[variant]=nil;}
+        if(queued&&now()>=queued.roomReturnRetryAt)returning=queued;
     }
     if(returning&&AGViewerConnection(env,variant)==returning.connection){
-        const uint8_t room=0;
-        returning.roomReturnAttempts++;
-        returning.roomReturnSent=AGViewerSend(env,variant,returning.connection,7,&room,1)>0;
+        int status=AGNativeWatchRoomStatus(env,variant);
+        BOOL done=returning.roomReplyReceived&&status>0;
+        BOOL canceled=returning.roomReturnAttempts&&(status<0||returning.roomReturnAttempts>=10);
+        returning.roomReturnComplete=done;
         @synchronized(ArmyWatch.class){
-            if(!returning.roomReturnSent&&!current&&!pendingRoomReturn[variant]){
-                returning.roomReturnRetryAt=now()+1;
-                pendingRoomReturn[variant]=returning;
-            }
+            if((done||canceled)&&pendingRoomReturn[variant]==returning)pendingRoomReturn[variant]=nil;
+        }
+        if(!done&&!canceled){
+            const uint8_t room=0;
+            returning.roomReturnAttempts++;
+            returning.roomReturnSent=AGViewerSend(env,variant,returning.connection,7,&room,1)>0;
+            returning.roomReturnRetryAt=now()+1;
         }
         dispatch_async(dispatch_get_main_queue(),^{
             if(!AGViewerActive(variant)){returning.traceSavedAt=0;[returning checkDeadline];}
         });
+    }else if(returning){
+        @synchronized(ArmyWatch.class){if(pendingRoomReturn[variant]==returning)pendingRoomReturn[variant]=nil;}
     }
     int pb=atomic_exchange(&pendingPB[variant],0);
     if(pb)AGNativeWatchSwitch(env,pb-1);
@@ -417,6 +443,12 @@ void AGViewerTick(void *env,int variant) {
         int ok=AGViewerSend(env,variant,connection,-102,data,sizeof data);
         @synchronized(ArmyWatch.class){if(!ok)finish(w);}
     }
+}
+
+void AGViewerTick(void *env,int variant){
+    if(!env||variant<0||variant>=6||atomic_exchange(&tickBusy[variant],true))return;
+    @try{viewerTick(env,variant);}
+    @finally{atomic_store(&tickBusy[variant],false);}
 }
 
 @implementation ArmyWatch
@@ -507,9 +539,11 @@ void AGViewerTick(void *env,int variant) {
     self.traceSavedAt=now();
     AGWatchTrace trace;if(!AGNativeWatchTraceCopy(self.variant,&trace))return;
     uint64_t render[5]={0};AGNativeWatchTraceRenderCopy(self.variant,render);
-    NSDictionary *report=@{@"build":@295,@"pb":@(self.variant+1),@"phase":@(self.phase),
+    NSDictionary *report=@{@"build":@296,@"pb":@(self.variant+1),@"phase":@(self.phase),
         @"snapshot_ready":@(self.snapshotReceived),@"native_running":@(AGNativeWatchRunning(self.variant)),
         @"room0_request_sent":@(self.roomReturnSent),@"room0_request_attempts":@(self.roomReturnAttempts),
+        @"room0_reply_received":@(self.roomReplyReceived),@"room0_reply_rows":@(self.roomReplyRows),
+        @"room0_return_complete":@(self.roomReturnComplete),@"battlefield_return":@(self.battlefield),
         @"end_received":@(self.endReceived),@"cleanup_pending":@(atomic_load(&nativeCleanup[self.variant])),
         @"watch_active":@(AGViewerActive(self.variant)),@"still_watching":@(AGViewerStillWatching(self.variant)),
         @"render_callbacks":@(render[0]),@"render_steps":@(render[1]),@"render_completed":@(render[2]),
@@ -521,7 +555,7 @@ void AGViewerTick(void *env,int variant) {
         @"scene_exceptions":@(trace.exceptions),@"first_exception":[NSString stringWithUTF8String:trace.exception]?:@""};
     NSData *data=[NSJSONSerialization dataWithJSONObject:report options:NSJSONWritingPrettyPrinted error:nil];
     NSString *directory=NSSearchPathForDirectoriesInDomains(NSDocumentDirectory,NSUserDomainMask,YES).firstObject;
-    if(data&&directory)[data writeToFile:[directory stringByAppendingPathComponent:@"Watch295-diagnostic.json"] atomically:YES];
+    if(data&&directory)[data writeToFile:[directory stringByAppendingPathComponent:@"Watch296-diagnostic.json"] atomically:YES];
 }
 - (void)close {
     [self.watchdog invalidate];self.watchdog=nil;
@@ -596,6 +630,7 @@ void AGViewerTick(void *env,int variant) {
     }];
 }
 @end
+
 
 
 

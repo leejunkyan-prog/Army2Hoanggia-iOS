@@ -15,6 +15,8 @@ int AGNativeWatchAux(int variant);
 void AGNativeWatchSwitch(void *env,int variant);
 void AGNativeWatchEnd(void *env,int variant);
 int AGNativeWatchTryEnd(void *env,int variant);
+/* -1: navigated elsewhere; 0: room0 has no rows; positive: installed rows. */
+int AGNativeWatchRoomStatus(void *env,int variant);
 void AGNativeWatchCamera(int variant,int kind,int code);
 int AGNativeWatchToggleCamera(int variant);
 void AGNativeWatchClearCameraKeys(int variant);
@@ -25,3 +27,4 @@ __attribute__((visibility("default"))) void AGNativeWatchRenderFrame(void *env,i
 __attribute__((visibility("default"))) void AGNativeWatchGameUpdate(void *env,void *arena,int variant);
 int AGNativeWatchRendering(int variant);
 int AGViewerActive(int variant);
+

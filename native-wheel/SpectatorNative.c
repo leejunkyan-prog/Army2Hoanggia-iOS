@@ -22,6 +22,7 @@ int AGNativeWatchAux(int v){return 0;}
 void AGNativeWatchSwitch(void *e,int v){}
 void AGNativeWatchEnd(void *e,int v){}
 int AGNativeWatchTryEnd(void *e,int v){return 1;}
+int AGNativeWatchRoomStatus(void *e,int v){return -1;}
 void AGNativeWatchCamera(int v,int k,int c){}
 int AGNativeWatchToggleCamera(int v){return 0;}
 void AGNativeWatchClearCameraKeys(int v){}
@@ -298,16 +299,32 @@ static int restore(void *e,void *opaque){
     if(players){*(void **)(players+0xa0)=w->oldRoster;players[0xd0]=w->oldTurn;}
     uint8_t *camera=global(AGSpectatorMaps[v].cameraClass);
     if(camera&&w->restoreCamera){memcpy(camera+0xa4,w->oldCamera,sizeof w->oldCamera);camera[0xbc]=w->oldCameraMode;}
-    /* APK back.a_() is virtual. Base Screen.a() only changes currentScreen;
-       the destination override also rebuilds its rows, commands and state.
-       Restore old watch globals first so an immediate reply is not undone. */
+    /* Finish native teardown without executing the destination override.
+       Area.a() dereferences its row vector before a room reply has installed
+       it. If it throws after setting currentScreen, TryEnd used to retry
+       forever: both SP2/room7 and the battlefield window remained blocked
+       behind that activation. The base activator resets input and installs
+       the saved screen; a fresh room7 reply owns full area initialization. */
     if(w->started&&w->back&&canvas){
-        ((void (*)(void *,void *))(base()+AGSpectatorMaps[v].restore))(e,w->back);
+        ((void (*)(void *,void *))(base()+AGSpectatorMaps[v].restore-0x38))(e,w->back);
         if(*(void **)(canvas+0xb8)!=w->back)return 0;
     }
     return 1;
 }
 static int guard(void *e,int (*fn)(void *,void *),void *j){return AGWheelGuard(e,fn,j,(void *)(base()+0x1300d54));}
+static int roomStatus(void *e,void *opaque){
+    int v=*(int *)opaque;
+    static const uintptr_t classes[6]={0x2089f70,0x20b8f10,0x20e6c00,0x21148f0,0x21425e0,0x21702d0};
+    uint8_t *klass=global(classes[v]),*canvas=global(AGNotesMaps[v].canvas);
+    uint8_t *screen=klass?*(uint8_t **)(klass+0xa0):NULL;
+    if(!screen||!canvas||*(void **)(canvas+0xb8)!=screen||screen[0x4d]!=0)return -1;
+    void *rows=*(void **)(klass+0xc0);
+    return rows?((int (*)(void *,void *))(base()+0x1dfce8))(e,rows):0;
+}
+int AGNativeWatchRoomStatus(void *e,int v){
+    if(!e||v<0||v>=6)return -1;
+    return guard(e,roomStatus,&v);
+}
 typedef struct {int v;uint8_t *player;int64_t hp;} ReplayHP;
 static int replayHP(void *e,void *opaque){
     ReplayHP *j=opaque;
@@ -567,6 +584,7 @@ void AGNativeWatchRenderFrame(void *e,int v){
     pthread_mutex_unlock(&watchLock);
 }
 #endif
+
 
 
 

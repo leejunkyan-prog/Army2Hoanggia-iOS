@@ -1,0 +1,133 @@
+name: Build Army2 iOS 296 room0 return
+on:
+  workflow_dispatch:
+  push:
+    branches: [fix/ios-296-watch-return-recovery]
+permissions:
+  contents: read
+concurrency:
+  group: game-ui-296
+  cancel-in-progress: true
+jobs:
+  return-flow:
+    runs-on: macos-26
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Preserve Build294 production flow as the failing control
+        run: git show 3089f63000c04102ccd2ff49d65a83bc4cb042f1:native-wheel/Spectator.m > native-wheel/SpectatorBaseline294.m
+      - name: Reproduce missing room0 request in Build294
+        run: bash native-wheel/test_watch_return295.sh baseline
+      - name: Exercise corrected production receive, tick, close and input flow
+        run: bash native-wheel/test_watch_return296.sh fixed
+      - name: Check overlay mounting and touch passthrough
+        run: bash native-wheel/test_watch_overlay293.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Army2HoangGia-Build296-return-flow-checks
+          path: native-wheel/build/*-result.json
+          if-no-files-found: warn
+          retention-days: 14
+  framework:
+    needs: return-flow
+    runs-on: macos-26
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compile iPhone ARM64 framework
+        run: bash native-wheel/build_296.sh
+      - name: Restore and hash-check the exact supplied Build293
+        run: |
+          GITHUB_STEP_SUMMARY= python3 delivery/build290/assemble.py
+          unzip -p ipa-output/Army2HoangGia-2.4.1-Build290-JarServer-unsigned.ipa Payload/Army2Hoanggia.app/Army2Hoanggia > native-wheel/build/base290-native
+          python3 native-wheel/package_293.py ipa-output/Army2HoangGia-2.4.1-Build290-JarServer-unsigned.ipa delivery/build293/framework-293.zip ipa-output/source293.ipa > native-wheel/build/source293-validation.json
+          python3 - <<'PY'
+          from pathlib import Path
+          from hashlib import sha256
+          from zipfile import ZipFile
+          source=Path('ipa-output/source293.ipa')
+          assert sha256(source.read_bytes()).hexdigest()=='3d307b2951c6a8540052d4d259d9307b56bcf9103cd5989e39bbf3301e136378'
+          with ZipFile(source) as z:
+              Path('native-wheel/build/base293-native').write_bytes(z.read('Payload/Army2Hoanggia.app/Army2Hoanggia'))
+          PY
+      - name: Run compiled return, real area reply and existing ARM64 regressions
+        shell: bash
+        run: |
+          python3 -m venv native-wheel/build/device-qa
+          native-wheel/build/device-qa/bin/pip install --quiet lief unicorn capstone
+          py=native-wheel/build/device-qa/bin/python
+          bin=native-wheel/build/QA/AGWheel.framework/AGWheel
+          cp "$bin" native-wheel/build/AGWheel296-fixed
+          cp native-wheel/Spectator.m native-wheel/build/Spectator296-fixed.m
+          cp native-wheel/SpectatorNative.c native-wheel/build/SpectatorNative296-fixed.c
+          git show 4321652996aace646325b6f48e25e03abbaecb67:native-wheel/Spectator.m > native-wheel/Spectator.m
+          git show 4321652996aace646325b6f48e25e03abbaecb67:native-wheel/SpectatorNative.c > native-wheel/SpectatorNative.c
+          bash native-wheel/build_295.sh
+          if "$py" native-wheel/test_watch_cleanup296.py "$bin" > native-wheel/build/cleanup295-control.txt 2>&1; then
+            cat native-wheel/build/cleanup295-control.txt
+            exit 1
+          fi
+          grep -q CLEANUP_DEPENDS_ON_DESTINATION_OVERRIDE native-wheel/build/cleanup295-control.txt
+          cp native-wheel/build/AGWheel296-fixed "$bin"
+          cp native-wheel/build/Spectator296-fixed.m native-wheel/Spectator.m
+          cp native-wheel/build/SpectatorNative296-fixed.c native-wheel/SpectatorNative.c
+          status=0
+          for test in test_room_sender295 test_room_reply295 test_watch_cleanup296 test_native_watch test_inventory_device282 test_recipe_reentry286 test_snapshot_flash286 test_watch_room_transition287 test_watch_cold_start287 test_recipe_dialog289 test_snapshot_barrier289; do
+            "$py" "native-wheel/$test.py" "$bin" > "native-wheel/build/$test.txt" 2>&1 || status=1
+            cat "native-wheel/build/$test.txt"
+          done
+          for test in native-wheel/test_*291.py native-wheel/test_*292.py native-wheel/test_*293.py; do
+            name="$(basename "$test" .py)"
+            "$py" "$test" "$bin" > "native-wheel/build/$name.txt" 2>&1 || status=1
+            cat "native-wheel/build/$name.txt"
+          done
+          exit "$status"
+      - name: Package296 over the exact293 input and verify endpoints
+        run: |
+          py=native-wheel/build/device-qa/bin/python
+          target=ipa-output/Army2HoangGia-2.4.1-Build296-Room0Return-unsigned.ipa
+          "$py" native-wheel/package_296.py ipa-output/source293.ipa native-wheel/build/framework-296.zip "$target"
+          "$py" native-wheel/verify_endpoint290.py "$target" --report ipa-output/endpoint296-check.json
+          shasum -a 256 "$target" > ipa-output/Build296-SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Army2HoangGia-2.4.1-Build296-Room0Return-unsigned
+          path: |
+            ipa-output/Army2HoangGia-2.4.1-Build296-Room0Return-unsigned.ipa
+            ipa-output/Army2HoangGia-2.4.1-Build296-Room0Return-unsigned.validation.json
+            ipa-output/endpoint296-check.json
+            ipa-output/Build296-SHA256SUMS.txt
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Army2HoangGia-Build296-framework-checks
+          path: |
+            native-wheel/build/framework-296.zip
+            native-wheel/build/test_*.txt
+            native-wheel/build/cleanup295-control.txt
+          if-no-files-found: error
+          retention-days: 14
+  interface:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --no-save playwright
+      - run: npx playwright install --with-deps chromium
+      - run: node native-wheel/test_lobby.js
+      - run: node native-wheel/test_native_watch_ui.js
+
