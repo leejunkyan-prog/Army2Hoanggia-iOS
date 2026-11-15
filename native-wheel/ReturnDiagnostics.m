@@ -26,6 +26,13 @@ void AGReturnInput(int v,int kind,int code,int blocker){
     atomic_store(&returns[v].softKey,code<0&&code>=-32?code:0);
     atomic_store(&returns[v].inputBlocker,blocker);
 }
+void AGReturnInputStage(int v,int kind,int code,int stage){
+    if(v<0||v>=6)return;
+    atomic_store(&returns[v].inputAt,millis());
+    atomic_store(&returns[v].inputKind,kind);
+    atomic_store(&returns[v].softKey,code<0&&code>=-32?code:0);
+    atomic_store(&returns[v].inputBlocker,stage);
+}
 int AGReturnShouldSample(int v){
     if(v<0||v>=6)return 0;
     uint64_t at=millis(),before=atomic_load(&returns[v].claimedAt);
@@ -89,7 +96,8 @@ static void saveSnapshot(void){
     NSDictionary *report=@{@"build":@297,@"diagnostic_revision":@"297-native-return-state-1",@"created_at":stamp(),
         @"session_started_at":session,@"app_build":NSBundle.mainBundle.infoDictionary[@"CFBundleVersion"]?:@"unknown",
         @"screen_kind_legend":@{@"0":@"unknown",@"1":@"area",@"2":@"arena",@"3":@"room",@"4":@"other"},
-        @"input_blocker_legend":@{@"0":@"passed_to_game",@"1":@"watch",@"2":@"battlefield_lobby",@"3":@"notes_or_wheel"},
+        @"input_blocker_legend":@{@"0":@"passed_to_game",@"1":@"watch",@"2":@"battlefield_lobby",@"3":@"notes_or_wheel",
+            @"-1":@"inside_watch_guard",@"-2":@"inside_lobby_guard",@"-3":@"inside_notes_guard",@"-4":@"inside_wheel_guard"},
         @"latest_watch":watch?:@{},@"visible_windows":windows,@"latest":pbs,@"history":[history copy]};
     NSData *data=[NSJSONSerialization dataWithJSONObject:report options:NSJSONWritingPrettyPrinted error:nil];
     NSString *path=[directory() stringByAppendingPathComponent:@"Watch297-diagnostic.json"];

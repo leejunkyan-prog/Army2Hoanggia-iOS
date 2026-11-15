@@ -36,6 +36,8 @@ for v in range(6):
     t.put(klass+0xe9,'<B',0)
     t.call('_AGNativeWatchReturnDiagnostic',t.ENV,v);t.call('_AGReturnDiagnosticCopy',v,out)
     assert t.get(out+64+3*4,'<i')==0,'Hidden-list gate was not captured'
+    t.call('_AGReturnInputStage',v,0,-7,-3);t.call('_AGReturnDiagnosticCopy',v,out)
+    assert t.get(out+160,'<i')==-3,'A stalled input guard was not identifiable'
     t.call('_AGReturnInput',v,0,-7,1);t.call('_AGReturnDiagnosticCopy',v,out)
     assert t.get(out+156,'<i')==-7 and t.get(out+160,'<i')==1
     t.call('_AGReturnInput',v,0,ord('A'),0);t.call('_AGReturnDiagnosticCopy',v,out)

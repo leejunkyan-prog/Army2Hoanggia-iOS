@@ -15,6 +15,7 @@ typedef struct {
 #ifdef AG_RETURN_DIAGNOSTIC
 void AGReturnPulse(int variant,int source);
 void AGReturnInput(int variant,int kind,int code,int blocker);
+void AGReturnInputStage(int variant,int kind,int code,int stage);
 int AGReturnShouldSample(int variant);
 void AGReturnPublish(int variant,const int values[RD_COUNT]);
 int AGReturnDiagnosticCopy(int variant,AGReturnDiagnostic *out);
@@ -23,4 +24,5 @@ void AGNativeWatchReturnDiagnostic(void *env,int variant);
 #else
 static inline void AGReturnPulse(int v,int s){}
 static inline void AGReturnInput(int v,int k,int c,int b){}
+static inline void AGReturnInputStage(int v,int k,int c,int s){}
 #endif
