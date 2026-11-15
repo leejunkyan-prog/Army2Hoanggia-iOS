@@ -13,6 +13,7 @@ int AGNativeWatchFree(int v){return 0;}
 int AGNativeWatchRunning(int v){return 0;}
 int AGNativeWatchAngle(int v){return -1;}
 int AGNativeWatchPacket(void *e,int v,const uint8_t *p,size_t n){return 0;}
+int AGNativeWatchReplay(void *e,int v,int cmd,const uint8_t *p,size_t n){return 0;}
 int AGNativeWatchFinishSnapshot(void *e,int v){return 0;}
 int AGNativeWatchTryFinishSnapshot(void *e,int v){return 0;}
 void AGNativeWatchObserve(int v,int cmd,const uint8_t *p,size_t n){}
@@ -286,6 +287,27 @@ static int restore(void *e,void *opaque){
     return 1;
 }
 static int guard(void *e,int (*fn)(void *,void *),void *j){return AGWheelGuard(e,fn,j,(void *)(base()+0x1300d54));}
+typedef struct {int v;uint8_t *player;int64_t hp;} ReplayHP;
+static int replayHP(void *e,void *opaque){
+    ReplayHP *j=opaque;
+    static const uintptr_t death[6]={0x5978c0,0x6807ec,0x7654b0,0x84a174,0x92ee38,0xa13afc};
+    /* The APK's syncing path applies state without damage text, HP flash,
+       animation waits or clock changes. Keep the normal death cleanup. */
+    *(int64_t *)(j->player+0x68)=j->hp;
+    if(j->hp<=0)((void (*)(void *,void *))(base()+death[j->v]))(e,j->player);
+    return 1;
+}
+int AGNativeWatchReplay(void *e,int v,int cmd,const uint8_t *p,size_t n){
+    if(!e||v<0||v>=6||cmd!=51||!p||n!=10)return 0;
+    pthread_mutex_lock(&watchLock);
+    Watch *w=&watches[v];int consumed=0;
+    if(w->started&&AGViewerStillWatching(v)&&!AGNativeWatchRunning(v)){
+        uint8_t *player=actor(v,p[0]);
+        if(player){ReplayHP j={v,player,be64(p+1)};consumed=guard(e,replayHP,&j)>0;}
+    }
+    pthread_mutex_unlock(&watchLock);
+    return consumed;
+}
 typedef struct {int v,option;uint8_t *arena;} Menu;
 __attribute__((noinline,optnone)) static int applyOption(void *e,void *opaque){
     Menu *j=opaque;int v=j->v;uintptr_t b=base();

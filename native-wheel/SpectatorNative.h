@@ -6,6 +6,7 @@ int AGNativeWatchFree(int variant);
 int AGNativeWatchRunning(int variant);
 int AGNativeWatchAngle(int variant);
 int AGNativeWatchPacket(void *env,int variant,const uint8_t *data,size_t length);
+int AGNativeWatchReplay(void *env,int variant,int command,const uint8_t *data,size_t length);
 int AGNativeWatchFinishSnapshot(void *env,int variant);
 int AGNativeWatchTryFinishSnapshot(void *env,int variant);
 void AGNativeWatchObserve(int variant,int command,const uint8_t *data,size_t length);

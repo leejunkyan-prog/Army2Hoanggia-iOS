@@ -10,7 +10,7 @@
 
 typedef NS_ENUM(int, WatchPhase) { Offered, WaitingForMatch, InMatch };
 typedef NS_ENUM(int, WatchAction) { NoAction, Accept };
-typedef NS_ENUM(int, WatchReceive) { PassToGame, Consumed, Snapshot, MatchEnded, LiveBeforeReady, ObserveFrame };
+typedef NS_ENUM(int, WatchReceive) { PassToGame, Consumed, Snapshot, MatchEnded, LiveBeforeReady, ObserveFrame, ReplayFrame };
 
 @interface ArmyWatch : UIViewController <WKScriptMessageHandler, WKNavigationDelegate>
 @property(nonatomic) int variant;
@@ -199,6 +199,10 @@ static WatchReceive receiveState(void *env,void *message,int variant,NSData *__s
                 if(w.phase!=InMatch||!combatPacket(cmd))return 0;
                 if(AGNativeWatchAvailable()){
                     if(cmd==20)return 1;
+                    if(cmd==51&&w.nativeStarted&&!w.snapshotReceived){
+                        *nativePacket=readBody(message);*owner=w;
+                        return ReplayFrame;
+                    }
                     if(w.nativeStarted&&!w.snapshotReceived&&(cmd==21||cmd==22||cmd==84)){
                         // Some servers omit the final clock packet. The first
                         // live move or shot follows the complete snapshot.
@@ -295,6 +299,9 @@ int AGViewerReceive(void *env,void *message,int variant){
                 watchReady(owner);
             }
             return 0;
+        }else if(result==ReplayFrame){
+            int cmd=*(const int8_t *)((const uint8_t *)message+0x30);
+            return packet?AGNativeWatchReplay(env,variant,cmd,p,packet.length):0;
         }else if(result==ObserveFrame){
             int cmd=*(const int8_t *)((const uint8_t *)message+0x30);
             if(packet)AGNativeWatchObserve(variant,cmd,p,packet.length);

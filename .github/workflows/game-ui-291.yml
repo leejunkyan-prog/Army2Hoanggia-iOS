@@ -1,0 +1,67 @@
+name: Build Army2 iOS 291 spectator live playback
+on:
+  workflow_dispatch:
+  push:
+    branches: [fix/ios-291-spectator-live]
+permissions:
+  contents: read
+concurrency:
+  group: game-ui-291
+  cancel-in-progress: true
+jobs:
+  framework:
+    runs-on: macos-26
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compile iPhone ARM64 framework
+        run: bash native-wheel/build_291.sh
+      - name: Restore exact Build290 native executable for regressions
+        shell: bash
+        run: |
+          GITHUB_STEP_SUMMARY= python3 delivery/build290/assemble.py
+          unzip -p ipa-output/Army2HoangGia-2.4.1-Build290-JarServer-unsigned.ipa \
+            Payload/Army2Hoanggia.app/Army2Hoanggia > native-wheel/build/base290-native
+      - name: Execute compiled ARM64 regressions
+        shell: bash
+        run: |
+          python3 -m venv native-wheel/build/device-qa
+          native-wheel/build/device-qa/bin/pip install --quiet lief unicorn
+          py=native-wheel/build/device-qa/bin/python
+          bin=native-wheel/build/QA/AGWheel.framework/AGWheel
+          status=0
+          for test in test_native_watch test_inventory_device282 test_recipe_reentry286 test_snapshot_flash286 test_watch_room_transition287 test_watch_cold_start287 test_recipe_dialog289 test_snapshot_barrier289; do
+            "$py" "native-wheel/$test.py" "$bin" > "native-wheel/build/$test.txt" 2>&1 || status=1
+            cat "native-wheel/build/$test.txt"
+          done
+          shopt -s nullglob
+          for test in native-wheel/test_*291.py; do
+            name="$(basename "$test" .py)"
+            "$py" "$test" "$bin" > "native-wheel/build/$name.txt" 2>&1 || status=1
+            cat "native-wheel/build/$name.txt"
+          done
+          exit "$status"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Army2HoangGia-Build291-framework
+          path: |
+            native-wheel/build/framework-291.zip
+            native-wheel/build/test_*.txt
+          if-no-files-found: error
+          retention-days: 14
+  interface:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --no-save playwright
+      - run: npx playwright install --with-deps chromium
+      - run: node native-wheel/test_lobby.js
+      - run: node native-wheel/test_native_watch_ui.js
