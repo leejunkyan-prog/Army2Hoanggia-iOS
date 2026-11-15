@@ -70,7 +70,8 @@ static NSDictionary *craftSnapshot(int v,uint64_t at){
         "selected_index","display_rows","source_rows","inventory_menu_flag","amount_flag","modal_present","menu_visible","menu_index","menu_rows",
         "slot_kind","slot_id","slot_quantity","cached_kind","cached_id","cached_quantity","slot_equals_cached","source_match_found",
         "source_equals_slot","source_equals_cached","source_quantity","display_is_source","display_is_private","argument_is_slot",
-        "argument_is_cached","argument_in_source","snapshot_stable"};
+        "argument_is_cached","argument_in_source","snapshot_stable","singleton_matches_root",
+        "recipe_rows","recipe_index","recipe_parent_matches_root"};
     NSMutableDictionary *s=[@{@"detail_calls":@(d.detailCalls),@"classifier_accepted":@(d.accepted),@"classifier_rejected":@(d.rejected),
         @"received_packets":@(d.packets),@"sample_age_ms":d.at?@(at>=d.at?at-d.at:0):@(-1)} mutableCopy];
     for(int i=0;i<CF_COUNT;i++)s[[NSString stringWithUTF8String:names[i]]]=@(d.values[i]);return s;
@@ -79,7 +80,8 @@ static NSArray *craftEvents(void){
     AGCraftEvent copied[AG_CRAFT_EVENTS];int count=AGCraftEventsCopy(copied,AG_CRAFT_EVENTS);
     static const char *names[CE_COUNT]={"kind","pb","command","remaining_bytes","classifier_result","classifier_reason",
         "input_kind","input_id","input_quantity","resolved_kind","resolved_id","resolved_quantity","handle_changed",
-        "input_matches_selection","resolved_in_source","selected_index"};
+        "input_matches_selection","resolved_in_source","selected_index","singleton_matched_before",
+        "singleton_matched_after","binding_status"};
     NSMutableArray *result=[NSMutableArray array];
     for(int n=0;n<count;n++){NSMutableDictionary *row=[@{@"uptime_ms":@(copied[n].at)} mutableCopy];
         for(int i=0;i<CE_COUNT;i++)row[[NSString stringWithUTF8String:names[i]]]=@(copied[n].values[i]);[result addObject:row];}
@@ -146,10 +148,10 @@ static void saveSnapshot(void){
         complete[@"thread_sampling"] = @"this_process_only; no thread suspension; image-relative code locations; waiting=3, running=1";
 #endif
 #ifdef AG_CRAFT_DIAGNOSTIC
-        complete[@"diagnostic_revision"]=[NSString stringWithFormat:@"%d-craft-detail-state-2",AG_RETURN_BUILD];
+        complete[@"diagnostic_revision"]=[NSString stringWithFormat:@"%d-craft-screen-binding-3",AG_RETURN_BUILD];
         complete[@"craft_events"]=craftEvents();
         complete[@"craft_legend"]=@{@"screen_kind":@{@"0":@"outside_inventory",@"1":@"inventory",@"2":@"inventory_child"},
-            @"event_kind":@{@"1":@"detail_classifier",@"2":@"receive_before_native_dispatch"},
+            @"event_kind":@{@"1":@"detail_classifier",@"2":@"receive_before_native_dispatch",@"3":@"recipe_screen_binding_before_dispatch"},
             @"item_kind":@{@"0":@"absent",@"1":@"equipment_uid_omitted",@"2":@"consumable_template"},
             @"classifier_reason":@{@"0":@"invalid_input",@"1":@"not_consumable",@"2":@"known_recipe_id",@"3":@"no_description",@"4":@"short_description",@"5":@"prefix_mismatch",@"6":@"prefix_match",@"7":@"string_unavailable",@"8":@"native_exception"},
             @"classifier_result":@"Client recognition only, not server craft success. Incoming payloads and item description text are omitted."};

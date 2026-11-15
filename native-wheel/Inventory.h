@@ -3,3 +3,5 @@
 void AGInventoryOrder(void *env,int variant,uint8_t *canvas,uint8_t *screen,int isInventory);
 void *AGInventoryResolve(void *env,void *item);
 int AGInventoryGeometry(int variant,int *out);
+void AGInventoryPrepareRecipe(void *env,void *message,int variant);
+

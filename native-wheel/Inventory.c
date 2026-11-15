@@ -54,12 +54,58 @@ static void remember(InventoryState *state,Entry *rows,int n){
 void AGInventoryOrder(void *e,int v,uint8_t *c,uint8_t *s,int active){(void)e;(void)v;(void)c;(void)s;(void)active;}
 void *AGInventoryResolve(void *e,void *p){(void)e;return p;}
 int AGInventoryGeometry(int v,int *out){(void)v;(void)out;return 0;}
+void AGInventoryPrepareRecipe(void *e,void *m,int v){(void)e;(void)m;(void)v;}
 #else
 #include <mach-o/dyld.h>
 #include "NotesMap.h"
 #include "InventoryMap.h"
 extern int AGWheelGuard(void *,int (*)(void *,void *),void *,void *);
 static uintptr_t base(void){return (uintptr_t)_dyld_get_image_header(0);}
+static uint8_t *inventoryRoot(int v,uint8_t *screen){
+    uint8_t *clazz=*(uint8_t **)(base()+inventoryMaps[v][2]);
+    uint8_t *recipe=*(uint8_t **)(base()+recipeClasses[v]);
+    if(!clazz)return NULL;
+    if(!screen)return NULL;
+    if(*(void **)screen==clazz)return screen;
+    /* The real recipe screen inherits its commands at +0x10; that
+       field is not a parent. Z5.i stores its inventory at +0x50. */
+    if(recipe&&*(void **)screen==recipe){
+        uint8_t *parent=*(uint8_t **)(screen+0x50);
+        return parent&&*(void **)parent==clazz?parent:NULL;
+    }
+    /* Older callback wrappers use +0x10. Compare only known chest objects;
+       never chase arbitrary command/string fields as a parent chain. */
+    uint8_t *parent=*(uint8_t **)(screen+0x10);
+    if(parent&&(parent==*(uint8_t **)(clazz+0xa0)||(uintptr_t)parent==inventories[v].screen))return parent;
+    return NULL;
+}
+typedef struct {int v,before,after;} RecipeBinding;
+static int bindRecipe(void *env,void *opaque){
+    (void)env;RecipeBinding *j=opaque;
+    uint8_t *canvas=*(uint8_t **)(base()+AGNotesMaps[j->v].canvas);
+    uint8_t *clazz=*(uint8_t **)(base()+inventoryMaps[j->v][2]);
+    if(!canvas||!clazz)return 0;
+    uint8_t *root=inventoryRoot(j->v,*(uint8_t **)(canvas+0xb8));
+    if(!root)return 0;
+    j->before=*(void **)(clazz+0xa0)==root;
+    /* Original cmd101 constructs a new C6 singleton while a recipe/result
+       still retains the visible C6. The -18 dispatcher gates activation
+       on identity with this singleton. Keep the attached screen as owner;
+       do this on receive so no render tick or retry request is needed. */
+    *(void **)(clazz+0xa0)=root;
+    j->after=*(void **)(clazz+0xa0)==root;
+    return 1;
+}
+void AGInventoryPrepareRecipe(void *env,void *message,int v){
+    if(!env||!message||v<0||v>=6)return;
+    uint8_t *m=message;if(*(int8_t *)(m+0x30)!=-18)return;
+    uint8_t *in=*(uint8_t **)(m+0x20),*array=in?*(uint8_t **)(in+0x10):NULL;
+    if(!array)return;
+    int cap=*(int *)(array+0x10),end=*(int *)(in+0x18),pos=*(int *)(in+0x20);
+    if(pos<0||end<pos||end>cap||end-pos<10||end-pos>65535||!array[0x14+pos])return;
+    RecipeBinding job={.v=v};int ok=AGWheelGuard(env,bindRecipe,&job,(void *)(base()+0x1300d54));
+    AGCraftRecipeBinding(v,ok,job.before,job.after);
+}
 static uint8_t *pool(int v){uint8_t *p=*(uint8_t **)(base()+inventoryMaps[v][0]);return p?*(uint8_t **)(p+0xa8):NULL;}
 /* java.util.Vector.elementData follows modCount and its alignment padding.
    The AOT constructor and elementAt both access it at +0x18. */
@@ -81,9 +127,8 @@ void AGInventoryOrder(void *env,int v,uint8_t *canvas,uint8_t *screen,int active
     if(v<0||v>=6)return;
     InventoryState *state=&inventories[v];
     if(!active){
-        /* Z5.i(env,screen,parent) stores the parent at +0x10. A recipe
-           child is still the same chest session, not an explicit close. */
-        if(state->open&&screen&&state->screen&&*(uintptr_t *)(screen+0x10)==state->screen)return;
+        /* A recipe child is still the same chest session. */
+        if(state->open&&state->screen&&(uintptr_t)inventoryRoot(v,screen)==state->screen)return;
         if(!state->open||!env)return;
         unpin(env,state->display);
         free(state->previous);
@@ -173,7 +218,7 @@ void *AGInventoryResolve(void *env,void *opaque){
         uint8_t *screen=*(uint8_t **)(canvas+0xb8),*vec=pool(v);
         void *clazz=*(void **)(base()+inventoryMaps[v][2]);
         if(!screen||!vec||!clazz)continue;
-        for(int depth=0;screen&&*(void **)screen!=clazz&&depth<4;depth++)screen=*(uint8_t **)(screen+0x10);
+        screen=inventoryRoot(v,screen);
         if(!screen||*(void **)screen!=clazz)continue;
         uint8_t *display=*(uint8_t **)(screen+0x70),*items=display?elements(display):NULL;
         int index=*(int *)(screen+0xc8),count=display?*(int *)(display+0x24):0;
@@ -231,9 +276,9 @@ int AGInventoryCraftInspect(int v,void *opaque,int64_t d[CF_COUNT]){
     uint8_t *canvas=*(uint8_t **)(base()+AGNotesMaps[v].canvas);
     uint8_t *clazz=*(uint8_t **)(base()+inventoryMaps[v][2]);if(!canvas||!clazz)return 0;
     uint8_t *current=*(uint8_t **)(canvas+0xb8),*root=*(uint8_t **)(clazz+0xa0);
-    if(current&&*(void **)current==clazz)root=current;
+    uint8_t *attached=inventoryRoot(v,current);if(attached)root=attached;
     if(!root||*(void **)root!=clazz)return 0;
-    d[CF_OK]=1;d[CF_SCREEN]=current==root?1:current&&*(void **)(current+0x10)==root?2:0;
+    d[CF_OK]=1;d[CF_SCREEN]=current==root?1:inventoryRoot(v,current)==root?2:0;
     d[CF_PARENT_DEPTH]=d[CF_SCREEN]==2?1:0;
     InventoryState *state=&inventories[v];d[CF_STATE_OPEN]=state->open;d[CF_STATE_MATCH]=state->screen==(uintptr_t)root;
     d[CF_PRIVATE_DISPLAY]=state->display!=NULL;d[CF_SELECTED]=*(int *)(root+0xc8);
@@ -258,6 +303,12 @@ int AGInventoryCraftInspect(int v,void *opaque,int64_t d[CF_COUNT]){
         }
     }
     d[CF_SNAPSHOT_STABLE]=pool(v)==source&&(!source||(elements(source)==a&&vectorCount(source)==count))&&*(uint8_t **)(root+0x70)==display;
+    d[CF_SINGLETON_MATCH]=*(void **)(clazz+0xa0)==root;
+    uint8_t *recipeClass=*(uint8_t **)(base()+recipeClasses[v]);
+    uint8_t *recipe=recipeClass?*(uint8_t **)(recipeClass+0xa0):NULL;
+    d[CF_RECIPE_ROWS]=recipe?vectorCount(*(uint8_t **)(recipe+0x48)):-1;
+    d[CF_RECIPE_INDEX]=recipe?*(int *)(recipe+0x58):-1;
+    d[CF_RECIPE_PARENT_MATCH]=recipe&&*(void **)(recipe+0x50)==root;
     return 1;
 }
 #endif

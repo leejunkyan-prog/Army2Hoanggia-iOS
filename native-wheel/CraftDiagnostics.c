@@ -74,6 +74,11 @@ void AGCraftReceive(void *message,int v){
     AGCraftEvent event={.at=at};event.values[CE_KIND]=2;event.values[CE_PB]=v+1;
     event.values[CE_COMMAND]=*(const int8_t *)(m+0x30);event.values[CE_LENGTH]=remaining;record(event);
 }
+void AGCraftRecipeBinding(int v,int status,int before,int after){
+    AGCraftEvent event={.at=millis()};event.values[CE_KIND]=3;event.values[CE_PB]=v+1;
+    event.values[CE_COMMAND]=-18;event.values[CE_BIND_BEFORE]=before;
+    event.values[CE_BIND_AFTER]=after;event.values[CE_BIND_STATUS]=status;record(event);
+}
 int AGCraftDiagnosticCopy(int v,AGCraftDiagnostic *out){
     if(v<0||v>=6||!out)return 0;pthread_mutex_lock(&craftLock);*out=diagnostics[v];pthread_mutex_unlock(&craftLock);return 1;
 }
