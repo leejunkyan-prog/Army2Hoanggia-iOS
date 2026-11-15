@@ -36,9 +36,8 @@ def assemble(source,overlay,target):
   symbols=['_AGRecipeDetail','_AGInventoryOrder','_AGInventoryResolve','_AGNativeWatchTryEnd','_AGNativeWatchPacket','_AGSceneHook']
   symbols+=['_AGNativeWatchFinishSnapshot','_AGNativeWatchToggleCamera']
   for symbol in symbols:assert symbol.encode()+b'\0'in raw,symbol
-  import lief
-  exported={s.name for s in lief.MachO.parse(list(raw)).at(0).exported_symbols}
-  assert '_AGViewerStillWatching' in exported, 'Spectator guard must be a dyld export, not a hidden symbol'
+  from patch_spectator291 import framework_exports
+  assert framework_exports(raw,b'_AGViewerStillWatching'), 'Spectator guard must be a dyld export, not a hidden symbol'
   changed[name]=unsigned(raw)
   from patch_spectator291 import patch_native
   native,edits=patch_native(original_native,changed[name])

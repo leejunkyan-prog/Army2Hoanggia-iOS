@@ -20,9 +20,11 @@ native_path = Path(sys.argv[2]) if len(sys.argv) > 2 else ROOT / 'build/base290-
 original = native_path.read_bytes()
 modified, edits = patch.patch_native(original, framework)
 assert edits and len(modified) == len(original)
-fw = lief.MachO.parse(str(Path(sys.argv[1]))).at(0)
+fw_file = lief.MachO.parse(str(Path(sys.argv[1])))
+fw = fw_file.at(0)
 assert '_AGViewerStillWatching' in {s.name for s in fw.exported_symbols}, 'dlsym cannot resolve a hidden symbol'
-image = lief.MachO.parse(str(native_path)).at(0)
+image_file = lief.MachO.parse(str(native_path))
+image = image_file.at(0)
 MAIN, HEAP, STACK, FAKE = 0x100000000, 0x600000000, 0x700000000, 0x400000000
 STOP, WATCH, DLSYM = FAKE, FAKE + 0x1000, FAKE + 0x1200
 ENV = HEAP + 0x100
