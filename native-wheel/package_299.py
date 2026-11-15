@@ -33,7 +33,7 @@ def assemble(source,overlay,target):
    changed[framework+'AGWheel.framework/viewer/art/'+resource]=base.read(app+'gameres/'+resource)
   name=framework+'AGWheel.framework/AGWheel';raw=changed[name];assert raw[:8]==bytes.fromhex('cffaedfe0c000001')
   symbols=['_AGRecipeDetail','_AGInventoryOrder','_AGInventoryResolve','_AGNativeWatchTryEnd','_AGNativeWatchPacket','_AGSceneHook']
-  symbols+=['_AGNativeWatchFinishSnapshot','_AGNativeWatchToggleCamera','_AGThreadPulse','_AGThreadDiagnosticsSample','_AGCanvasRecoveryFrame','_AGCanvasRecoveryCopy']
+  symbols+=['_AGNativeWatchFinishSnapshot','_AGNativeWatchToggleCamera','_AGThreadPulse','_AGThreadDiagnosticsSample','_AGCanvasRecoveryTrack','_AGCanvasRecoveryFrame','_AGCanvasRecoveryCopy']
   for symbol in symbols:assert symbol.encode()+b'\0'in raw,symbol
   changed[name]=unsigned(raw)
   info=plistlib.loads(base.read(app+'Info.plist'))

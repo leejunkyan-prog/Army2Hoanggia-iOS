@@ -29,6 +29,7 @@ for name in ('_AGViewerTick','_AGTurnPulse'):
     t.u.hook_add(UC_HOOK_CODE,boundary,begin=t.symbols[name],end=t.symbols[name])
 def string(at):return bytes(t.u.mem_read(at,100)).split(b'\0')[0].decode()
 thread_class=t.alloc(0x100);threads={};started=[];fail_start=False
+tracking=0;original_java_thread=t.alloc(0x80)
 def find_class():assert string(t.reg(1))=='java/lang/Thread';t.ret(thread_class)
 def method():
     name,signature=string(t.reg(2)),string(t.reg(3))
@@ -43,7 +44,10 @@ def start():
     obj=t.reg(1);threads[obj]['alive']=not fail_start;started.append(obj);t.ret()
 def get_class():assert t.reg(1) in threads;t.ret(thread_class)
 def alive():assert t.reg(2)==3;t.ret(threads[t.reg(1)]['alive'])
-for i,(slot,handler) in enumerate([(6,find_class),(33,method),(30,construct),(63,start),(31,get_class),(39,alive),(228,lambda:t.ret(0)),(17,lambda:t.ret())]):
+def static_method():assert string(t.reg(2))=='currentThread' and string(t.reg(3))=='()Ljava/lang/Thread;';t.ret(4)
+def field():assert string(t.reg(2))=='target' and string(t.reg(3))=='Ljava/lang/Runnable;';t.ret(5)
+def get_target():assert t.reg(1)==original_java_thread and t.reg(2)==5;t.ret(fixtures[tracking]['runnable'])
+for i,(slot,handler) in enumerate([(6,find_class),(33,method),(30,construct),(63,start),(31,get_class),(39,alive),(228,lambda:t.ret(0)),(17,lambda:t.ret()),(113,static_method),(116,lambda:t.ret(original_java_thread)),(94,field),(95,get_target)]):
     pc=t.FAKE+0x36000+i*0x100;t.put(t.JNI+slot*8,'<Q',pc);t.extraNative[pc]=handler
 t.extraNative[t.MAIN+0x1dfce8]=lambda:t.ret(t.get(t.reg(1)+0x24,'<i'))
 fixtures=[]
@@ -53,7 +57,7 @@ for v,klass in enumerate(classes):
     canvas=t.objects[v][1];area=t.alloc(0x100);a=t.alloc(0x100);vector=t.alloc(0x40);runnable=t.alloc(0x80);keys=t.alloc(0x14+32)
     t.put(t.MAIN+klass,'<Q',a);t.put(a+0xa0,'<Q',area);t.put(a+0xc0,'<Q',vector);t.put(vector+0x24,'<i',130)
     t.put(a+0xe8,'<BB',1,1);t.put(a+0xe4,'<i',4679);t.put(area+0x44,'<i',432);t.put(area+0x4d,'<B',0)
-    t.put(runnable,'<Q',canvas);t.put(canvas+0xb0,'<Q',runnable);t.put(canvas+0xb8,'<Q',area);t.put(canvas+0x130,'<ii',432,0)
+    t.put(runnable,'<Q',canvas);t.put(canvas+0xb0,'<Q',t.objects[v][4]);t.put(canvas+0xb8,'<Q',area);t.put(canvas+0x130,'<ii',432,0)
     t.put(canvas+0x128,'<i',602);t.put(canvas+0x124,'<i',889);t.put(canvas+0xa0,'<Q',keys)
     t.put(keys+0x10,'<i',32);t.put(keys+0x1c,'<B',1)
     table=pointer(t.MAIN+klass+0x28);step=pointer(table+0x98)-t.MAIN;input_=pointer(table+0x88)-t.MAIN
@@ -71,6 +75,8 @@ def state(v):
     out=t.alloc(40);t.call('_AGCanvasRecoveryCopy',v,out)
     return struct.unpack('<QQQiii',t.u.mem_read(out,36))
 for v,f in enumerate(fixtures):
+    tracking=v
+    if fixed:t.call('_AGCanvasRecoveryTrack',t.ENV,v)
     t.threadPort=1000+v;t.call('_AGReturnPulse',v,0);t.deadPorts.add(t.threadPort)
     t.stillWatching=True;render(v);assert len(started)==v if fixed else not started
     t.stillWatching=False;t.now+=2
@@ -108,5 +114,6 @@ else:
     t.now+=100
     for _ in range(50):render(v)
     assert len(started)==before+3,'Repeated child failures spawned unbounded threads'
-    assert all(n==0 for n in t.pins.values()),t.pins
+    roots={f['runnable'] for f in fixtures}
+    assert all(n==(1 if p in roots else 0) for p,n in t.pins.items()),t.pins
     print('PASS compiled299: six original Runnable targets, exactly one replacement, no parallel render UI clock, actual AOT transition432->0 and down-key consumption, live delayed-start safety, dead-port rebind, roots released, bounded failure retries and no unrelated restarts')

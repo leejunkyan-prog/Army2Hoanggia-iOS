@@ -18,6 +18,7 @@
 #include "SpectatorNative.h"
 #include "Spectator.h"
 #include "ReturnDiagnostics.h"
+#include "CanvasRecovery.h"
 #import "GameViewport.h"
 extern void AGInventoryTick(void *,int);
 
@@ -100,6 +101,7 @@ __attribute__((noinline,optnone)) static int AGSendNative(void *env, void *conte
 }
 
 __attribute__((visibility("default"))) void AGWheelTick(void *env, int variant) {
+    if(env)AGCanvasRecoveryTrack(env,variant);
     if(env)AGReturnPulse(variant,0);
 #ifdef AG_RETURN_DIAGNOSTIC
     if(env&&AGReturnShouldSample(variant))AGNativeWatchReturnDiagnostic(env,variant);

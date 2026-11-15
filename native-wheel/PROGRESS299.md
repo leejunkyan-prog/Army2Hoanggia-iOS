@@ -20,13 +20,18 @@ second UI/physics clock:
 - A stale timestamp alone never permits recovery. mach_port_type must prove
   that the original retained thread right is a DEAD_NAME. A live sleeping,
   blocked, or otherwise unresponsive worker is never duplicated or stopped.
-- The attached render Env constructs java.lang.Thread with the existing
-  GameCanvas singleton (the exact original Runnable), then calls Thread.start.
+- Before watching, the original update callback retains its exact Runnable
+  from Thread.currentThread().target through JNI and checks its native class.
+  Original Thread.run's AOT also reads that Runnable field at offset0x50.
+  The canvas's static navigation/screen fields are not Runnable references.
+- The attached render Env constructs java.lang.Thread with that retained
+  original GameCanvas Runnable, then calls Thread.start.
   The VM creates the new worker and its own Env. No UIKit timer invokes Java,
   and no saved Env is reused by a native pthread.
 - The first original update callback rebinds the retained Mach right to the
   actual new worker. Recovery is complete only after that heartbeat advances.
-  The Java Thread root remains pinned while starting; delayed/live/unknown
+  The Java Thread root remains pinned while starting; one original Runnable
+  root per PB remains retained for later watch sessions. Delayed/live/unknown
   workers cannot cause another start. Explicitly ended replacements allow
   up to three attempts per watch, separated by checks and delay.
 - Normal healthy exits disarm recovery after verified update progress.

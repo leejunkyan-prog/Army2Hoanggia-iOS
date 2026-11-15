@@ -31,6 +31,7 @@ static void *replacementMain(void *opaque){
     created.running=0;return NULL;
 }
 static void *oldMain(void *unused){
+    AGCanvasRecoveryTrack(env,0);
     AGReturnPulse(0,0);
     pthread_mutex_lock(&conditionLock);atomic_store(&ready,1);
     while(!atomic_load(&leaveOld))pthread_cond_wait(&condition,&conditionLock);
@@ -56,6 +57,10 @@ static void *newObject(void *e,void *c,void *method,const void **arguments){
     created.target=(void *)arguments[0];locals++;return &created;
 }
 static void *newGlobal(void *e,void *p){globals++;if(globals>peakGlobals)peakGlobals=globals;return p;}
+static void *staticMethod(void *e,void *c,const char *name,const char *signature){NSCAssert(!strcmp(name,"currentThread")&&!strcmp(signature,"()Ljava/lang/Thread;"),@"Wrong currentThread signature");return (void *)4;}
+static void *currentThread(void *e,void *c,void *method,const void *arguments){locals++;return &oldWorker;}
+static void *targetField(void *e,void *c,const char *name,const char *signature){NSCAssert(!strcmp(name,"target")&&!strcmp(signature,"Ljava/lang/Runnable;"),@"Wrong original Runnable field");return (void *)5;}
+static void *originalTarget(void *e,void *thread,void *field){NSCAssert(field==(void *)5&&thread==&oldWorker,@"Target was not read on the original worker");locals++;return targets[0];}
 static void deleteGlobal(void *e,void *p){globals--;}
 static void deleteLocal(void *e,void *p){locals--;}
 static int exceptionCheck(void *e){return 0;}
@@ -88,13 +93,14 @@ static void finish(BOOL passed,NSString *reason){
 - (BOOL)application:(UIApplication *)app didFinishLaunchingWithOptions:(NSDictionary *)options{
     self.window=[[UIWindow alloc]initWithFrame:UIScreen.mainScreen.bounds];self.window.rootViewController=[UIViewController new];[self.window makeKeyAndVisible];
     renderThread=pthread_self();
-    for(int v=0;v<6;v++){pointer(targets[v],canvases[v]);pointer(canvases[v]+0xb0,targets[v]);pointer(canvases[v]+0xb8,screens[v]);pointer(arenas[v]+0xe8,battleScreen);}
+    for(int v=0;v<6;v++){pointer(targets[v],canvases[v]);pointer(canvases[v]+0xb0,screens[v]);pointer(canvases[v]+0xb8,screens[v]);pointer(arenas[v]+0xe8,battleScreen);}
     jni[6]=findClass;jni[33]=getMethod;jni[30]=newObject;jni[21]=newGlobal;jni[22]=deleteGlobal;jni[23]=deleteLocal;
     jni[63]=start;jni[228]=exceptionCheck;jni[17]=exceptionClear;jni[31]=getClass;jni[39]=isAlive;
+    jni[113]=staticMethod;jni[116]=currentThread;jni[94]=targetField;jni[95]=originalTarget;
     pthread_create(&oldWorker,NULL,oldMain,NULL);pthread_create(&healthyWorker,NULL,healthyMain,NULL);
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW,1800*NSEC_PER_MSEC),dispatch_get_main_queue(),^{
         @try{
-            NSCAssert(atomic_load(&ready)&&!AGThreadGameExited(0),@"Real waiting worker was mistaken for a dead one");
+            NSCAssert(atomic_load(&ready)&&state().registered&&!AGThreadGameExited(0),@"Original Runnable was not retained or real waiting worker was mistaken for a dead one");
             AGCanvasRecoveryFrame(env,0,1);AGCanvasRecoveryFrame(env,0,0);
             NSCAssert(starts==0&&state().attempts==0,@"Stale but live canvas acquired a second update owner");
             AGCanvasRecoveryFrame(env,0,1);
@@ -107,7 +113,7 @@ static void finish(BOOL passed,NSString *reason){
             rows=130;modal=1;AGCanvasRecoveryFrame(env,0,0);NSCAssert(starts==0,@"Canvas restarted under a new watch offer");modal=0;
             AGCanvasRecoveryFrame(env,0,0);NSCAssert(starts==1&&state().pending,@"Dead canvas was not restarted through Thread.start");
             for(int i=0;i<120;i++)AGCanvasRecoveryFrame(env,0,0);
-            NSCAssert(starts==1&&peakGlobals==1,@"Repeated renders duplicated a starting worker");
+            NSCAssert(starts==1&&peakGlobals==2,@"Repeated renders duplicated a starting worker");
             dispatch_after(dispatch_time(DISPATCH_TIME_NOW,900*NSEC_PER_MSEC),dispatch_get_main_queue(),^{
                 @try{
                     AGCanvasRecoveryFrame(env,0,0);
@@ -115,7 +121,7 @@ static void finish(BOOL passed,NSString *reason){
                     NSCAssert(s.recovered==1&&!s.pending&&!s.armed&&s.status==2,@"Replacement never reached the original update heartbeat");
                     NSCAssert(!AGThreadGameExited(0)&&d.gameTicks>5&&atomic_load(&uiUpdates)>5,@"Rebinding did not retain the actual new worker");
                     NSCAssert(other.gameTicks>30,@"Other PB stopped updating");
-                    NSCAssert(globals==0&&locals==0,@"JNI roots leaked after recovery");
+                    NSCAssert(globals==1&&locals==0,@"Expected one retained original Runnable and no temporary thread roots");
                     NSCAssert(self.window.isKeyWindow&&app.keyWindow==self.window,@"Recovery changed key window ownership");
                     AGReturnDiagnosticSave();
                     NSData *data=[NSData dataWithContentsOfFile:[documents() stringByAppendingPathComponent:@"Watch299-diagnostic.json"]];

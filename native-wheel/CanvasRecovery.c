@@ -17,7 +17,9 @@ extern int AGWheelGuard(void *,int (*)(void *,void *),void *,void *);
 static struct {
     atomic_uint_fast64_t attempts,recovered,failures;
     atomic_int armed,pending,status;
-    atomic_bool busy;
+    atomic_bool busy,tracking;
+    atomic_int trackAttempts;
+    atomic_uintptr_t runnable;
     int wasWatching,cycleAttempts;
     uint64_t startedAt,retryAt,endedAt;
     void *thread;
@@ -40,11 +42,28 @@ static int pendingException(void *e){
     ((void (*)(void *))jni[17])(e);return 1;
 }
 typedef struct {int v,alive;void *clazz,*localThread,*thread;} ThreadJob;
+typedef struct {int v;void *clazz,*current,*target,*root;} CaptureJob;
+static int captureRunnable(void *e,void *opaque){
+    CaptureJob *j=opaque;void **jni=*(void ***)e;
+    j->clazz=((void *(*)(void *,const char *))jni[6])(e,"java/lang/Thread");
+    if(pendingException(e)||!j->clazz)return 0;
+    void *current=((void *(*)(void *,void *,const char *,const char *))jni[113])(e,j->clazz,"currentThread","()Ljava/lang/Thread;");
+    if(pendingException(e)||!current)return 0;
+    j->current=((void *(*)(void *,void *,void *,const void *))jni[116])(e,j->clazz,current,NULL);
+    if(pendingException(e)||!j->current)return 0;
+    void *field=((void *(*)(void *,void *,const char *,const char *))jni[94])(e,j->clazz,"target","Ljava/lang/Runnable;");
+    if(pendingException(e)||!field)return 0;
+    j->target=((void *(*)(void *,void *,void *))jni[95])(e,j->current,field);
+    if(pendingException(e)||!j->target||*(void **)j->target!=canvasClass(j->v))return 0;
+    j->root=((void *(*)(void *,void *))jni[21])(e,j->target);
+    return !pendingException(e)&&j->root;
+}
 static int startThread(void *e,void *opaque){
     ThreadJob *j=opaque;void **jni=*(void ***)e;
     uint8_t *canvas=canvasClass(j->v);
-    uint8_t *target=canvas?*(uint8_t **)(canvas+0xb0):NULL;
-    /* The existing GameCanvas singleton is also its original Runnable. */
+    uint8_t *target=(void *)atomic_load(&loops[j->v].runnable);
+    /* Retained on the original game thread, before it can exit. Static
+       canvas screen/navigation fields must never substitute for Runnable. */
     if(!target||*(void **)target!=canvas)return -2;
     j->clazz=((void *(*)(void *,const char *))jni[6])(e,"java/lang/Thread");
     if(!j->clazz)return 0;
@@ -73,6 +92,15 @@ static int aliveThread(void *e,void *opaque){
     j->alive=alive!=0;return 1;
 }
 static int guard(void *e,int (*fn)(void *,void *),void *j){return AGWheelGuard(e,fn,j,(void *)(base()+0x1300d54));}
+void AGCanvasRecoveryTrack(void *e,int v){
+    if(!e||v<0||v>=6||atomic_load(&loops[v].runnable)||atomic_load(&loops[v].trackAttempts)>=3||atomic_exchange(&loops[v].tracking,1))return;
+    atomic_fetch_add(&loops[v].trackAttempts,1);
+    CaptureJob j={.v=v};int ok=guard(e,captureRunnable,&j);
+    localDelete(e,j.target);localDelete(e,j.current);localDelete(e,j.clazz);pendingException(e);
+    if(ok>0){uintptr_t empty=0;if(!atomic_compare_exchange_strong(&loops[v].runnable,&empty,(uintptr_t)j.root))globalDelete(e,j.root);}
+    else{globalDelete(e,j.root);atomic_store(&loops[v].status,-10);}
+    atomic_store(&loops[v].tracking,0);
+}
 static int safeDestination(int v){
     uint8_t *canvas=canvasClass(v);
     uint8_t *arena=arenaClass(v);
@@ -108,7 +136,7 @@ static void frame(void *e,int v,int watching){
         atomic_store(&loops[v].pending,0);atomic_fetch_add(&loops[v].failures,1);
         loops[v].retryAt=at+1000;atomic_store(&loops[v].status,-2);return;
     }
-    if(!d.gameAt||at<d.gameAt+1500||at<loops[v].retryAt||loops[v].cycleAttempts>=3||!AGThreadGameExited(v))return;
+    if(!atomic_load(&loops[v].runnable)||!d.gameAt||at<d.gameAt+1500||at<loops[v].retryAt||loops[v].cycleAttempts>=3||!AGThreadGameExited(v))return;
     /* Empty room0 data is still being installed by the receive callback. */
     if(AGNativeWatchRoomStatus(e,v)==0)return;
     if(!AGThreadRebindGame(v))return;
@@ -129,6 +157,6 @@ void AGCanvasRecoveryFrame(void *e,int v,int watching){
 int AGCanvasRecoveryCopy(int v,AGCanvasRecovery *out){
     if(v<0||v>=6||!out)return 0;
     *out=(AGCanvasRecovery){atomic_load(&loops[v].attempts),atomic_load(&loops[v].recovered),atomic_load(&loops[v].failures),
-        atomic_load(&loops[v].armed),atomic_load(&loops[v].pending),atomic_load(&loops[v].status)};return 1;
+        atomic_load(&loops[v].armed),atomic_load(&loops[v].pending),atomic_load(&loops[v].status),atomic_load(&loops[v].runnable)!=0};return 1;
 }
 #endif

@@ -78,7 +78,7 @@ static NSDictionary *snapshot(int v,uint64_t at){
 #ifdef AG_CANVAS_RECOVERY
     AGCanvasRecovery recovery={0};AGCanvasRecoveryCopy(v,&recovery);
     s[@"canvas_recovery"]=@{@"attempts":@(recovery.attempts),@"recovered":@(recovery.recovered),
-        @"failures":@(recovery.failures),@"armed":@(recovery.armed),@"pending":@(recovery.pending),@"status":@(recovery.status)};
+        @"failures":@(recovery.failures),@"armed":@(recovery.armed),@"pending":@(recovery.pending),@"status":@(recovery.status),@"target_registered":@(recovery.registered)};
 #endif
     return s;
 }
