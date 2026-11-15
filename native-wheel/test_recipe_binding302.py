@@ -28,6 +28,7 @@ for v in range(6):
     assert t.pins[display]==1,'Real formula child prematurely closed the inventory session'
     latest=t.item(126,1);t.put(pool+0xa8,'<Q',t.vector([t.item(7,900),latest]))
     assert t.call('_AGInventoryResolve',t.E,old)==latest
+    t.put(recipe+0x58,'<i',2)
     message=t.alloc(0x40);stream=t.alloc(0x30);array=t.alloc(0x80)
     t.put(message+0x20,'<Q',stream);t.put(stream+0x10,'<Q',array)
     t.put(array+0x10,'<i',64);t.put(stream+0x18,'<i',13);t.put(stream+0x20,'<i',3)
@@ -39,6 +40,7 @@ for v in range(6):
         t.call('_AGInventoryPrepareRecipe',t.E,message,v)
         assert t.get(clazz+0xa0,'<Q')==root
         assert t.get(canvas+0xb8,'<Q')==current
+        assert t.get(recipe+0x58,'<i')==2,'A valid recipe level was reset'
         assert unchanged==bytes(t.u.mem_read(message,0x40))+bytes(t.u.mem_read(stream,0x30))+bytes(t.u.mem_read(array,0x80))+bytes(t.u.mem_read(root,0xe0))
     # Late replies after leaving, craft result0, truncated/malformed streams,
     # another command and a different PB cannot adopt a foreign screen.

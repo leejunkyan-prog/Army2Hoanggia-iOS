@@ -79,7 +79,7 @@ static uint8_t *inventoryRoot(int v,uint8_t *screen){
     if(parent&&(parent==*(uint8_t **)(clazz+0xa0)||(uintptr_t)parent==inventories[v].screen))return parent;
     return NULL;
 }
-typedef struct {int v,before,after;} RecipeBinding;
+typedef struct {int v,options,before,after;} RecipeBinding;
 static int bindRecipe(void *env,void *opaque){
     (void)env;RecipeBinding *j=opaque;
     uint8_t *canvas=*(uint8_t **)(base()+AGNotesMaps[j->v].canvas);
@@ -94,6 +94,17 @@ static int bindRecipe(void *env,void *opaque){
        do this on receive so no render tick or retry request is needed. */
     *(void **)(clazz+0xa0)=root;
     j->after=*(void **)(clazz+0xa0)==root;
+    uint8_t *recipeClass=*(uint8_t **)(base()+recipeClasses[j->v]);
+    uint8_t *recipe=recipeClass?*(uint8_t **)(recipeClass+0xa0):NULL;
+    if(recipe&&j->options>0&&j->options<=127){
+        int selected=*(int *)(recipe+0x58);
+        /* The original parser replaces the option vector without resetting
+           the selected level. A different recipe can have fewer options. */
+        if(selected<0||selected>=j->options){
+            *(int *)(recipe+0x58)=0;
+            memset(recipe+0x5c,0,4*sizeof(int)); /* scroll target/current/easing */
+        }
+    }
     return 1;
 }
 void AGInventoryPrepareRecipe(void *env,void *message,int v){
@@ -103,7 +114,7 @@ void AGInventoryPrepareRecipe(void *env,void *message,int v){
     if(!array)return;
     int cap=*(int *)(array+0x10),end=*(int *)(in+0x18),pos=*(int *)(in+0x20);
     if(pos<0||end<pos||end>cap||end-pos<10||end-pos>65535||!array[0x14+pos])return;
-    RecipeBinding job={.v=v};int ok=AGWheelGuard(env,bindRecipe,&job,(void *)(base()+0x1300d54));
+    RecipeBinding job={.v=v,.options=array[0x14+pos+9]};int ok=AGWheelGuard(env,bindRecipe,&job,(void *)(base()+0x1300d54));
     AGCraftRecipeBinding(v,ok,job.before,job.after);
 }
 static uint8_t *pool(int v){uint8_t *p=*(uint8_t **)(base()+inventoryMaps[v][0]);return p?*(uint8_t **)(p+0xa8):NULL;}

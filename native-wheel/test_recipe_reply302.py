@@ -82,11 +82,13 @@ for turn in range(24):
     # activator. It returns to the old chest, not the newly assigned singleton.
     invoke(0x515ae4,t.ENV,t.alloc(0x20))
     assert t.get(s.c+0xb8,'<Q')==root and t.get(clazz+0xa0,'<Q')==replacement
-    before=len(activations);reply(125 if turn%2 else 126,3 if turn%3 else 1)
+    count=3 if turn%3 else 1;t.put(recipe+0x58,'<i',2)
+    before=len(activations);reply(125 if turn%2 else 126,count)
     if fixed:
         assert t.get(clazz+0xa0,'<Q')==root
         assert t.get(s.c+0xb8,'<Q')==recipe and t.get(recipe+0x50,'<Q')==root
         assert activations[before:]==[root],'No formula activation or duplicate activation'
+        assert t.get(recipe+0x58,'<i')==(2 if count==3 else 0),'Invalid level retained, or valid level lost'
     else:
         assert t.get(s.c+0xb8,'<Q')==root and len(activations)==before
         missed+=1

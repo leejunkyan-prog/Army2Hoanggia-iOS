@@ -18,6 +18,8 @@ render tick, repeated request or automatic craft is involved. Skip craft
 result0, malformed/truncated replies and unrelated current screens. Also
 preserve the private chest session through the actual recipe parent+0x50;
 the previous+0x10 assumption referred to callback wrappers/commands.
+When a new recipe has fewer options, clamp an invalid retained option to0
+and reset its scroll animation; preserve a selection that is still valid.
 
 Craft302-diagnostic.json adds singleton/root agreement, recipe option count,
 selected option and parent agreement. Event kind3 records agreement before
