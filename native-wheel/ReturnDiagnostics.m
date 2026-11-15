@@ -6,6 +6,7 @@
 #include "ReturnDiagnostics.h"
 #include "ThreadDiagnostics.h"
 #include "CanvasRecovery.h"
+#include "CraftDiagnostics.h"
 #ifdef AG_RETURN_DIAGNOSTIC
 static struct {
     atomic_uint_fast64_t gameTicks,renderTicks,inputEvents,blockedInputs;
@@ -62,6 +63,29 @@ static dispatch_queue_t logQueue(void){
 }
 static NSString *directory(void){return NSSearchPathForDirectoriesInDomains(NSDocumentDirectory,NSUserDomainMask,YES).firstObject;}
 static NSString *stamp(void){return [[NSISO8601DateFormatter new] stringFromDate:NSDate.date];}
+#ifdef AG_CRAFT_DIAGNOSTIC
+static NSDictionary *craftSnapshot(int v,uint64_t at){
+    AGCraftDiagnostic d={0};AGCraftDiagnosticCopy(v,&d);
+    static const char *names[CF_COUNT]={"sample_ok","inventory_screen_kind","parent_depth","state_open","state_matches_root","has_private_display",
+        "selected_index","display_rows","source_rows","inventory_menu_flag","amount_flag","modal_present","menu_visible","menu_index","menu_rows",
+        "slot_kind","slot_id","slot_quantity","cached_kind","cached_id","cached_quantity","slot_equals_cached","source_match_found",
+        "source_equals_slot","source_equals_cached","source_quantity","display_is_source","display_is_private","argument_is_slot",
+        "argument_is_cached","argument_in_source","snapshot_stable"};
+    NSMutableDictionary *s=[@{@"detail_calls":@(d.detailCalls),@"classifier_accepted":@(d.accepted),@"classifier_rejected":@(d.rejected),
+        @"received_packets":@(d.packets),@"sample_age_ms":d.at?@(at>=d.at?at-d.at:0):@(-1)} mutableCopy];
+    for(int i=0;i<CF_COUNT;i++)s[[NSString stringWithUTF8String:names[i]]]=@(d.values[i]);return s;
+}
+static NSArray *craftEvents(void){
+    AGCraftEvent copied[AG_CRAFT_EVENTS];int count=AGCraftEventsCopy(copied,AG_CRAFT_EVENTS);
+    static const char *names[CE_COUNT]={"kind","pb","command","remaining_bytes","classifier_result","classifier_reason",
+        "input_kind","input_id","input_quantity","resolved_kind","resolved_id","resolved_quantity","handle_changed",
+        "input_matches_selection","resolved_in_source","selected_index"};
+    NSMutableArray *result=[NSMutableArray array];
+    for(int n=0;n<count;n++){NSMutableDictionary *row=[@{@"uptime_ms":@(copied[n].at)} mutableCopy];
+        for(int i=0;i<CE_COUNT;i++)row[[NSString stringWithUTF8String:names[i]]]=@(copied[n].values[i]);[result addObject:row];}
+    return result;
+}
+#endif
 static NSDictionary *snapshot(int v,uint64_t at){
     AGReturnDiagnostic d={0};AGReturnDiagnosticCopy(v,&d);
     static const char *names[RD_COUNT]={"sample_ok","screen_kind","area_rows","area_visible","area_animated","transition",
@@ -79,6 +103,9 @@ static NSDictionary *snapshot(int v,uint64_t at){
     AGCanvasRecovery recovery={0};AGCanvasRecoveryCopy(v,&recovery);
     s[@"canvas_recovery"]=@{@"attempts":@(recovery.attempts),@"recovered":@(recovery.recovered),
         @"failures":@(recovery.failures),@"armed":@(recovery.armed),@"pending":@(recovery.pending),@"status":@(recovery.status),@"target_registered":@(recovery.registered)};
+#endif
+#ifdef AG_CRAFT_DIAGNOSTIC
+    s[@"craft"]=craftSnapshot(v,at);
 #endif
     return s;
 }
@@ -107,12 +134,25 @@ static void saveSnapshot(void){
         @"input_blocker_legend":@{@"0":@"passed_to_game",@"1":@"watch",@"2":@"battlefield_lobby",@"3":@"notes_or_wheel",
             @"-1":@"inside_watch_guard",@"-2":@"inside_lobby_guard",@"-3":@"inside_notes_guard",@"-4":@"inside_wheel_guard"},
         @"latest_watch":watch?:@{},@"visible_windows":windows,@"latest":pbs,@"history":[history copy]};
-    NSString *path=[directory() stringByAppendingPathComponent:[NSString stringWithFormat:@"Watch%d-diagnostic.json",AG_RETURN_BUILD]];
+    NSString *prefix=@"Watch";
+#ifdef AG_CRAFT_DIAGNOSTIC
+    prefix=@"Craft";
+#endif
+    NSString *path=[directory() stringByAppendingPathComponent:[NSString stringWithFormat:@"%@%d-diagnostic.json",prefix,AG_RETURN_BUILD]];
     if(path)dispatch_async(logQueue(),^{
         NSMutableDictionary *complete=[report mutableCopy];
 #ifdef AG_RETURN_THREAD_DIAGNOSTIC
         complete[@"thread_samples"]=AGThreadDiagnosticsSample();
         complete[@"thread_sampling"] = @"this_process_only; no thread suspension; image-relative code locations; waiting=3, running=1";
+#endif
+#ifdef AG_CRAFT_DIAGNOSTIC
+        complete[@"diagnostic_revision"]=@"300-craft-detail-state-1";
+        complete[@"craft_events"]=craftEvents();
+        complete[@"craft_legend"]=@{@"screen_kind":@{@"0":@"outside_inventory",@"1":@"inventory",@"2":@"inventory_child"},
+            @"event_kind":@{@"1":@"detail_classifier",@"2":@"receive_before_native_dispatch"},
+            @"item_kind":@{@"0":@"absent",@"1":@"equipment_uid_omitted",@"2":@"consumable_template"},
+            @"classifier_reason":@{@"0":@"invalid_input",@"1":@"not_consumable",@"2":@"known_recipe_id",@"3":@"no_description",@"4":@"short_description",@"5":@"prefix_mismatch",@"6":@"prefix_match",@"7":@"string_unavailable",@"8":@"native_exception"},
+            @"classifier_result":@"Client recognition only, not server craft success. Incoming payloads and item description text are omitted."};
 #endif
         NSData *data=[NSJSONSerialization dataWithJSONObject:complete options:NSJSONWritingPrettyPrinted error:nil];
         if(data)[data writeToFile:path atomically:YES];

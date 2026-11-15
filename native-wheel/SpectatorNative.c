@@ -9,6 +9,7 @@
 #include "Spectator.h"
 #include "ReturnDiagnostics.h"
 #include "CanvasRecovery.h"
+#include "CraftDiagnostics.h"
 #ifdef AG_WHEEL_PREVIEW
 int AGNativeWatchAvailable(void){return 0;}
 int AGNativeWatchFree(int v){return 0;}
@@ -367,6 +368,7 @@ void AGNativeWatchReturnDiagnostic(void *e,int v){
     if(!e||v<0||v>=6)return;
     ReturnSample sample={.v=v};int ok=guard(e,returnSample,&sample);
     if(ok<=0)sample.values[RD_OK]=ok;AGReturnPublish(v,sample.values);
+    AGCraftSample(e,v);
 }
 #endif
 typedef struct {int v;uint8_t *player;int64_t hp;} ReplayHP;

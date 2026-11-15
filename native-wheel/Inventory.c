@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "Inventory.h"
+#include "CraftDiagnostics.h"
 #define INV_LIMIT 4096
 typedef struct { uint64_t key;int64_t quantity;uint8_t *item;int group,id,rank,fresh; } Entry;
 typedef struct { int count,open;uint64_t hash;uintptr_t screen;void *display;Entry *previous; } InventoryState;
@@ -214,6 +215,53 @@ int AGInventoryGeometry(int v,int *out){
     if(width<160||width>4096||x<0||y<0||w<120||w>width||x+w>width||h<120||h>4096||cols<3||cols>7||cell<16||cell*cols>w)return 0;
     int values[]={width,x,y,w,h,cols,cell};memcpy(out,values,sizeof values);return 1;
 }
+#ifdef AG_CRAFT_DIAGNOSTIC
+static int vectorCount(uint8_t *vec){
+    if(!vec)return -1;uint8_t *a=elements(vec);int n=*(int *)(vec+0x24);
+    return a&&n>=0&&n<=INV_LIMIT&&n<=*(int *)(a+0x10)?n:-1;
+}
+static void diagnosticItem(uint8_t *p,int64_t *kind,int64_t *id,int64_t *quantity){
+    *kind=0;*id=-1;*quantity=-1;if(!p)return;*kind=p[0xbd]?2:1;
+    if(p[0xbd]){*id=*(int64_t *)(p+0x80);*quantity=*(int64_t *)(p+0x90);}
+}
+int AGInventoryCraftInspect(int v,void *opaque,int64_t d[CF_COUNT]){
+    if(v<0||v>=6||!d)return 0;
+    memset(d,0,CF_COUNT*sizeof *d);d[CF_SLOT_ID]=d[CF_CACHE_ID]=d[CF_SOURCE_QUANTITY]=-1;
+    d[CF_SLOT_QUANTITY]=d[CF_CACHE_QUANTITY]=-1;
+    uint8_t *canvas=*(uint8_t **)(base()+AGNotesMaps[v].canvas);
+    uint8_t *clazz=*(uint8_t **)(base()+inventoryMaps[v][2]);if(!canvas||!clazz)return 0;
+    uint8_t *current=*(uint8_t **)(canvas+0xb8),*root=*(uint8_t **)(clazz+0xa0);
+    if(current&&*(void **)current==clazz)root=current;
+    if(!root||*(void **)root!=clazz)return 0;
+    d[CF_OK]=1;d[CF_SCREEN]=current==root?1:current&&*(void **)(current+0x10)==root?2:0;
+    d[CF_PARENT_DEPTH]=d[CF_SCREEN]==2?1:0;
+    InventoryState *state=&inventories[v];d[CF_STATE_OPEN]=state->open;d[CF_STATE_MATCH]=state->screen==(uintptr_t)root;
+    d[CF_PRIVATE_DISPLAY]=state->display!=NULL;d[CF_SELECTED]=*(int *)(root+0xc8);
+    d[CF_MENU_FLAG]=root[0xd4];d[CF_AMOUNT_FLAG]=root[0xd5];d[CF_MODAL]=*(void **)(canvas+0x108)!=NULL;
+    uint8_t *menu=*(uint8_t **)(canvas+0xe0);
+    if(menu){d[CF_MENU_VISIBLE]=menu[0x2c];d[CF_MENU_INDEX]=*(int *)(menu+0x18);d[CF_MENU_COUNT]=vectorCount(*(uint8_t **)(menu+0x10));}
+    uint8_t *display=*(uint8_t **)(root+0x70),*source=pool(v);int n=vectorCount(display),count=vectorCount(source);
+    d[CF_DISPLAY_COUNT]=n;d[CF_SOURCE_COUNT]=count;d[CF_DISPLAY_IS_SOURCE]=display&&display==source;
+    d[CF_DISPLAY_IS_PRIVATE]=display&&display==state->display;
+    int selected=(int)d[CF_SELECTED];uint8_t *slot=n>=0&&selected>=0&&selected<n?*(uint8_t **)(elements(display)+0x18+(size_t)selected*8):NULL;
+    uint8_t *cached=*(uint8_t **)(root+0x90);
+    diagnosticItem(slot,&d[CF_SLOT_KIND],&d[CF_SLOT_ID],&d[CF_SLOT_QUANTITY]);
+    diagnosticItem(cached,&d[CF_CACHE_KIND],&d[CF_CACHE_ID],&d[CF_CACHE_QUANTITY]);
+    d[CF_SLOT_EQUALS_CACHE]=slot&&slot==cached;d[CF_OPAQUE_IS_SLOT]=opaque&&opaque==slot;d[CF_OPAQUE_IS_CACHE]=opaque&&opaque==cached;
+    uint8_t *a=source?elements(source):NULL;
+    if(count>=0)for(int i=0;i<count;i++){
+        uint8_t *p=*(uint8_t **)(a+0x18+(size_t)i*8);if(!p)continue;
+        if(p==opaque)d[CF_OPAQUE_IN_SOURCE]=1;
+        if(slot&&key(p)==key(slot)){
+            d[CF_SOURCE_FOUND]=1;d[CF_SOURCE_EQUALS_SLOT]=p==slot;d[CF_SOURCE_EQUALS_CACHE]=p==cached;
+            d[CF_SOURCE_QUANTITY]=p[0xbd]?*(int64_t *)(p+0x90):-1;
+        }
+    }
+    d[CF_SNAPSHOT_STABLE]=pool(v)==source&&(!source||(elements(source)==a&&vectorCount(source)==count))&&*(uint8_t **)(root+0x70)==display;
+    return 1;
+}
 #endif
+#endif
+
 
 

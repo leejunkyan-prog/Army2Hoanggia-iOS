@@ -10,6 +10,7 @@
 #include "Notes77.h"
 #include "Spectator.h"
 #include "ReturnDiagnostics.h"
+#include "CraftDiagnostics.h"
 #include "SpectatorWait.h"
 #include "Lobby.h"
 #include "NotesMap.h"
@@ -103,26 +104,30 @@ int AGLobbySend(void *env,int variant,uintptr_t connection,int command,const uin
 
 /* Rương đồ invokes this only for the read-only Chi tiết action. The
    inventory refresh can replace the item, so read its current data at tap. */
+typedef struct {uint8_t *item;int reason;} NForgeJob;
 static int NForgeItem(void *env,void *opaque){
-    uint8_t *item=opaque;
-    if(!item[0xbd])return 0;
+    NForgeJob *job=opaque;uint8_t *item=job->item;
+    if(!item[0xbd]){job->reason=CR_NOT_CONSUMABLE;return 0;}
     const int64_t id=*(const int64_t *)(item+0x80);
-    if((id>=69&&id<=73)||(id>=120&&id<=129)||(id>=238&&id<=242))return 1;
+    if((id>=69&&id<=73)||(id>=120&&id<=129)||(id>=238&&id<=242)){job->reason=CR_KNOWN_RECIPE;return 1;}
     void *detail=*(void **)(item+104);
-    if(!detail)return 0;
+    if(!detail){job->reason=CR_NO_DESCRIPTION;return 0;}
     static const uint16_t prefix[]={0x43,0xf4,0x6e,0x67,0x20,0x74,0x68,0x1ee9,0x63,0x20,0x63,0x68,0x1ebf,0x20,0x74,0x1ea1,0x6f};
     void **jni=*(void ***)env;
     int length=((int (*)(void *,void *))jni[164])(env,detail);
-    if(length<(int)(sizeof prefix/sizeof *prefix))return 0;
+    if(length<(int)(sizeof prefix/sizeof *prefix)){job->reason=CR_SHORT_DESCRIPTION;return 0;}
     const uint16_t *chars=((const uint16_t *(*)(void *,void *,void *))jni[165])(env,detail,NULL);
-    if(!chars)return 0;
+    if(!chars){job->reason=CR_STRING_UNAVAILABLE;return 0;}
     int match=!memcmp(chars,prefix,sizeof prefix);
     ((void (*)(void *,void *,const uint16_t *))jni[166])(env,detail,chars);
-    return match;
+    job->reason=match?CR_PREFIX_MATCH:CR_PREFIX_MISMATCH;return match;
 }
 __attribute__((visibility("default"))) int AGRecipeDetail(void *env,void *item){
-    item=AGInventoryResolve(env,item);
-    return env&&item&&NRun(env,NForgeItem,item)>0;
+    void *volatile original=item;
+    item=AGInventoryResolve(env,item);NForgeJob job={.item=item,.reason=CR_INVALID};
+    int result=env&&item?NRun(env,NForgeItem,&job):0;
+    AGCraftDetail(env,original,item,result,result<0?CR_EXCEPTION:job.reason);
+    return result>0;
 }
 typedef struct {int variant;AGLobbyAccount *account;} NLobbyAccountJob;
 static int NLobbyAccount(void *env,void *context){
@@ -237,6 +242,7 @@ void AGNotesTick(void *env,int variant){
 }
 __attribute__((visibility("default"))) int AGNotesReceive(void *env,void *message,int variant){
     if(!env||!message||variant<0||variant>=6)return 0;int command=*(int8_t *)((uint8_t *)message+0x30);
+    AGCraftReceive(message,variant);
     if(command==-110||command==-124)return AGStatsReceive(env,message,variant);
     if(command==106||command==20){AGBlindReceive(env,message,variant);return 0;}
     if(command!=-122&&command!=-123)return 0;NInit();

@@ -21,6 +21,7 @@ for binding in m.dyld_info.bindings:
  if name not in names:names[name]=F+len(names)*256;imports[names[name]]=name
  put(L+binding.address,'<Q',names[name])
 cursor=H+0x10000
+now=100.0
 
 def alloc(n):
  global cursor
@@ -68,6 +69,8 @@ def hook(_,pc,size,data):
  if pc not in imports:return
  name=imports[pc]
  if name=='__dyld_get_image_header':ret(B)
+ elif name=='_clock_gettime':put(reg(1),'<qq',int(now),round((now-int(now))*1000000000));ret()
+ elif name in ('_pthread_mutex_lock','_pthread_mutex_unlock'):ret()
  elif name=='_malloc':ret(alloc(reg(0)))
  elif name=='_calloc':ret(alloc(reg(0)*reg(1)))
  elif name=='_free':ret()
@@ -147,4 +150,5 @@ for v in range(6 if __name__=='__main__' else 0):
  call('_AGInventoryOrder',E,v,canvas,0,0)
 assert all(n==0 for n in pins.values()),pins
 if __name__=='__main__':print('PASS compiled ARM64 bridge: six variants, 600 updates, zero blocking monitor calls, unchanged server vectors, stable unchanged frames, vector replacement, dialog deferral, crafting return, recipe resolution, reopen sorting and balanced JNI roots')
+
 
