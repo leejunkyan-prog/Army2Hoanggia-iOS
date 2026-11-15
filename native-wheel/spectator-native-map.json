@@ -7,7 +7,7 @@
     "mapNew": 5204736,
     "mapInit": 5206592,
     "cameraClass": 34170400,
-    "restore": 5954024,
+    "restore": 5954080,
     "clockSet": 5809416,
     "clockReset": 5809252,
     "slots": 5317360
@@ -20,7 +20,7 @@
     "mapNew": 6182136,
     "mapInit": 6183992,
     "cameraClass": 34361184,
-    "restore": 6906460,
+    "restore": 6906516,
     "clockSet": 6765812,
     "clockReset": 6765688,
     "slots": 6291520
@@ -33,7 +33,7 @@
     "mapNew": 7119292,
     "mapInit": 7121148,
     "cameraClass": 34548816,
-    "restore": 7843616,
+    "restore": 7843672,
     "clockSet": 7702968,
     "clockReset": 7702844,
     "slots": 7228676
@@ -46,7 +46,7 @@
     "mapNew": 8056448,
     "mapInit": 8058304,
     "cameraClass": 34736448,
-    "restore": 8780772,
+    "restore": 8780828,
     "clockSet": 8640124,
     "clockReset": 8640000,
     "slots": 8165832
@@ -59,7 +59,7 @@
     "mapNew": 8993604,
     "mapInit": 8995460,
     "cameraClass": 34924080,
-    "restore": 9717928,
+    "restore": 9717984,
     "clockSet": 9577280,
     "clockReset": 9577156,
     "slots": 9102988
@@ -72,7 +72,7 @@
     "mapNew": 9930760,
     "mapInit": 9932616,
     "cameraClass": 35111712,
-    "restore": 10655084,
+    "restore": 10655140,
     "clockSet": 10514436,
     "clockReset": 10514312,
     "slots": 10040144

@@ -1,0 +1,98 @@
+name: Build Army2 iOS 294 spectator return
+on:
+  workflow_dispatch:
+  push:
+    branches: [fix/ios-294-spectator-return]
+permissions:
+  contents: read
+concurrency:
+  group: game-ui-294
+  cancel-in-progress: true
+jobs:
+  framework:
+    runs-on: macos-26
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compile iPhone ARM64 framework
+        run: bash native-wheel/build_294.sh
+      - name: Restore and hash-check the exact supplied Build293
+        run: |
+          GITHUB_STEP_SUMMARY= python3 delivery/build290/assemble.py
+          unzip -p ipa-output/Army2HoangGia-2.4.1-Build290-JarServer-unsigned.ipa Payload/Army2Hoanggia.app/Army2Hoanggia > native-wheel/build/base290-native
+          python3 native-wheel/package_293.py ipa-output/Army2HoangGia-2.4.1-Build290-JarServer-unsigned.ipa delivery/build293/framework-293.zip ipa-output/source293.ipa > native-wheel/build/source293-validation.json
+          python3 - <<'PY'
+          from pathlib import Path
+          from hashlib import sha256
+          from zipfile import ZipFile
+          source=Path('ipa-output/source293.ipa')
+          assert sha256(source.read_bytes()).hexdigest()=='3d307b2951c6a8540052d4d259d9307b56bcf9103cd5989e39bbf3301e136378'
+          with ZipFile(source) as z:
+              Path('native-wheel/build/base293-native').write_bytes(z.read('Payload/Army2Hoanggia.app/Army2Hoanggia'))
+          PY
+      - name: Run return-path and existing compiled ARM64 regressions
+        shell: bash
+        run: |
+          python3 -m venv native-wheel/build/device-qa
+          native-wheel/build/device-qa/bin/pip install --quiet lief unicorn capstone
+          py=native-wheel/build/device-qa/bin/python
+          bin=native-wheel/build/QA/AGWheel.framework/AGWheel
+          status=0
+          for test in test_watch_exit294 test_native_watch test_inventory_device282 test_recipe_reentry286 test_snapshot_flash286 test_watch_room_transition287 test_watch_cold_start287 test_recipe_dialog289 test_snapshot_barrier289; do
+            "$py" "native-wheel/$test.py" "$bin" > "native-wheel/build/$test.txt" 2>&1 || status=1
+            cat "native-wheel/build/$test.txt"
+          done
+          for test in native-wheel/test_*291.py native-wheel/test_*292.py native-wheel/test_*293.py; do
+            name="$(basename "$test" .py)"
+            "$py" "$test" "$bin" > "native-wheel/build/$name.txt" 2>&1 || status=1
+            cat "native-wheel/build/$name.txt"
+          done
+          exit "$status"
+      - name: Package294 over the exact293 input and verify endpoints
+        run: |
+          py=native-wheel/build/device-qa/bin/python
+          target=ipa-output/Army2HoangGia-2.4.1-Build294-SpectatorReturn-unsigned.ipa
+          "$py" native-wheel/package_294.py ipa-output/source293.ipa native-wheel/build/framework-294.zip "$target"
+          "$py" native-wheel/verify_endpoint290.py "$target" --report ipa-output/endpoint294-check.json
+          shasum -a 256 "$target" > ipa-output/Build294-SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Army2HoangGia-2.4.1-Build294-SpectatorReturn-unsigned
+          path: |
+            ipa-output/Army2HoangGia-2.4.1-Build294-SpectatorReturn-unsigned.ipa
+            ipa-output/Army2HoangGia-2.4.1-Build294-SpectatorReturn-unsigned.validation.json
+            ipa-output/endpoint294-check.json
+            ipa-output/Build294-SHA256SUMS.txt
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Army2HoangGia-Build294-framework-checks
+          path: |
+            native-wheel/build/framework-294.zip
+            native-wheel/build/test_*.txt
+          if-no-files-found: error
+          retention-days: 14
+  interface:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --no-save playwright
+      - run: npx playwright install --with-deps chromium
+      - run: node native-wheel/test_lobby.js
+      - run: node native-wheel/test_native_watch_ui.js
+  native-overlay:
+    runs-on: macos-26
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash native-wheel/test_watch_overlay293.sh

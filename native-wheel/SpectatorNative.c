@@ -279,14 +279,10 @@ static int restore(void *e,void *opaque){
     Watch *w=opaque;int v=w->v;uint8_t *a=global(AGTurnMaps[v].arena_class);
     uint8_t *g=global(AGBossNativeMaps[v].mapClass);
     uint8_t *canvas=global(AGNotesMaps[v].canvas);
-    if(w->started&&w->back&&canvas&&*(void **)(canvas+0xb8)!=w->back){
-        ((void (*)(void *,void *))(base()+AGSpectatorMaps[v].restore))(e,w->back);
-        ((void (*)(void *))(base()+AGBossNativeMaps[v].resetInput))(e);
-    }
     if(canvas){
         canvas[0x13c]=w->oldFlash;
-        /* A force/message/result dialog opened while watching must not
-           cover the area list after the server's end-of-match packet. */
+        /* Close only the outgoing watch dialog, before destination a()V.
+           That activation may install its own loading dialog. */
         if(w->started)*(void **)(canvas+0x108)=NULL;
     }
     if(a){
@@ -302,6 +298,13 @@ static int restore(void *e,void *opaque){
     if(players){*(void **)(players+0xa0)=w->oldRoster;players[0xd0]=w->oldTurn;}
     uint8_t *camera=global(AGSpectatorMaps[v].cameraClass);
     if(camera&&w->restoreCamera){memcpy(camera+0xa4,w->oldCamera,sizeof w->oldCamera);camera[0xbc]=w->oldCameraMode;}
+    /* APK back.a_() is virtual. Base Screen.a() only changes currentScreen;
+       the destination override also rebuilds its rows, commands and state.
+       Restore old watch globals first so an immediate reply is not undone. */
+    if(w->started&&w->back&&canvas){
+        ((void (*)(void *,void *))(base()+AGSpectatorMaps[v].restore))(e,w->back);
+        if(*(void **)(canvas+0xb8)!=w->back)return 0;
+    }
     return 1;
 }
 static int guard(void *e,int (*fn)(void *,void *),void *j){return AGWheelGuard(e,fn,j,(void *)(base()+0x1300d54));}
@@ -349,9 +352,10 @@ int AGNativeWatchFree(int v){return v>=0&&v<6&&atomic_load(&freeCamera[v]);}
 int AGNativeWatchAux(int v){return v>=0&&v<6&&atomic_load(&auxiliary[v]);}
 int AGNativeWatchRunning(int v){return v>=0&&v<6&&atomic_load(&running[v]);}
 int AGNativeWatchAngle(int v){return AGNativeWatchRunning(v)?atomic_load(&watchAngle[v]):-1;}
-static void endNative(void *e,int v){
-    if(v<0||v>=6)return;Watch *w=&watches[v];
-    if(w->prepared)guard(e,restore,w);
+static int endNative(void *e,int v){
+    if(v<0||v>=6)return 1;Watch *w=&watches[v];
+    /* A failed activation must retain roots/state for the next safe tick. */
+    if(w->prepared&&guard(e,restore,w)<=0)return 0;
     for(int i=0;i<w->imageCount;i++){unpin(e,w->images[i].image);free(w->images[i].encoded);}
     unpin(e,w->back);unpin(e,w->oldMap);unpin(e,w->oldTiles);
     unpin(e,w->oldBackdrop);unpin(e,w->oldRoster);
@@ -359,6 +363,7 @@ static void endNative(void *e,int v){
     atomic_store(&running[v],0);atomic_store(&watchAngle[v],-1);
     atomic_store(&freeCamera[v],0);AGNativeWatchClearCameraKeys(v);
     atomic_store(&cameraChanged[v],0);atomic_store(&watchOption[v],0);atomic_store(&auxiliary[v],0);
+    return 1;
 }
 typedef struct {Watch *w;int seconds;} Clock;
 static int resetClock(void *e,void *opaque){
@@ -474,7 +479,7 @@ static void tickNative(void *e,int v){
 void AGNativeWatchEnd(void *e,int v){pthread_mutex_lock(&watchLock);endNative(e,v);pthread_mutex_unlock(&watchLock);}
 int AGNativeWatchTryEnd(void *e,int v){
     if(pthread_mutex_trylock(&watchLock))return 0;
-    endNative(e,v);pthread_mutex_unlock(&watchLock);return 1;
+    int ok=endNative(e,v);pthread_mutex_unlock(&watchLock);return ok;
 }
 int AGNativeWatchPacket(void *e,int v,const uint8_t *p,size_t n){pthread_mutex_lock(&watchLock);int ok=packetNative(e,v,p,n);pthread_mutex_unlock(&watchLock);return ok;}
 int AGNativeWatchFinishSnapshot(void *e,int v){
@@ -562,5 +567,6 @@ void AGNativeWatchRenderFrame(void *e,int v){
     pthread_mutex_unlock(&watchLock);
 }
 #endif
+
 
 

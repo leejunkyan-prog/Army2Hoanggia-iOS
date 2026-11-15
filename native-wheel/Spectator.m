@@ -478,8 +478,9 @@ void AGViewerTick(void *env,int variant) {
     self.traceSavedAt=now();
     AGWatchTrace trace;if(!AGNativeWatchTraceCopy(self.variant,&trace))return;
     uint64_t render[5]={0};AGNativeWatchTraceRenderCopy(self.variant,render);
-    NSDictionary *report=@{@"build":@293,@"pb":@(self.variant+1),@"phase":@(self.phase),
+    NSDictionary *report=@{@"build":@294,@"pb":@(self.variant+1),@"phase":@(self.phase),
         @"snapshot_ready":@(self.snapshotReceived),@"native_running":@(AGNativeWatchRunning(self.variant)),
+        @"end_received":@(self.endReceived),@"cleanup_pending":@(atomic_load(&nativeCleanup[self.variant])),
         @"watch_active":@(AGViewerActive(self.variant)),@"still_watching":@(AGViewerStillWatching(self.variant)),
         @"render_callbacks":@(render[0]),@"render_steps":@(render[1]),@"render_completed":@(render[2]),
         @"render_failures":@(render[3]),@"canvas_updates_deferred":@(render[4]),
@@ -490,10 +491,11 @@ void AGViewerTick(void *env,int variant) {
         @"scene_exceptions":@(trace.exceptions),@"first_exception":[NSString stringWithUTF8String:trace.exception]?:@""};
     NSData *data=[NSJSONSerialization dataWithJSONObject:report options:NSJSONWritingPrettyPrinted error:nil];
     NSString *directory=NSSearchPathForDirectoriesInDomains(NSDocumentDirectory,NSUserDomainMask,YES).firstObject;
-    if(data&&directory)[data writeToFile:[directory stringByAppendingPathComponent:@"Watch293-diagnostic.json"] atomically:YES];
+    if(data&&directory)[data writeToFile:[directory stringByAppendingPathComponent:@"Watch294-diagnostic.json"] atomically:YES];
 }
 - (void)close {
     [self.watchdog invalidate];self.watchdog=nil;
+    if(!AGViewerActive(self.variant)){self.traceSavedAt=0;[self checkDeadline];}
     [self.web.configuration.userContentController removeScriptMessageHandlerForName:@"viewer"];
     [self.web stopLoading];self.web.navigationDelegate=nil;
     if(self.keypadCaptured){AGViewportWheelVisible(0);self.keypadCaptured=NO;}
@@ -564,5 +566,6 @@ void AGViewerTick(void *env,int variant) {
     }];
 }
 @end
+
 
 
