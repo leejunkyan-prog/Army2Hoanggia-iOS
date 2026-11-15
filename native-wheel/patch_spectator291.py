@@ -11,7 +11,7 @@ Only verified zero padding in the existing RX __AGSCENE segment is used.
 There are no new load commands, segments, imports, or server modifications.
 """
 from hashlib import sha256
-from struct import pack
+from struct import pack, unpack_from
 
 BASE_NATIVE = '889afdfc35bdbb47f7f3abcd2327c97f631702158d2670f6c79c37b6d2485a06'
 PREDICATES = (0x51336c, 0x60101c, 0x6e5ce0, 0x7ca9a4, 0x8af668, 0x99432c)
@@ -100,10 +100,60 @@ def shim(variant):
     return b''.join(pack('<I', word) for word in words)
 
 
+def framework_exports(framework, symbol):
+    """Read the dyld export trie; a private symbol-table name is insufficient."""
+    assert framework[:8] == bytes.fromhex('cffaedfe0c000001')
+    pos, export = 32, None
+    for _ in range(unpack_from('<I', framework, 16)[0]):
+        command, size = unpack_from('<II', framework, pos)
+        assert size >= 8 and pos + size <= len(framework)
+        if command in (0x22, 0x80000022):
+            export = unpack_from('<II', framework, pos + 40)
+        elif command == 0x80000033:
+            export = unpack_from('<II', framework, pos + 8)
+        pos += size
+    if not export or not export[1]:
+        return False
+    offset, size = export
+    assert offset + size <= len(framework)
+    trie = framework[offset:offset + size]
+
+    def uleb(at):
+        number, shift = 0, 0
+        while True:
+            assert at < len(trie) and shift < 64
+            byte = trie[at]
+            at += 1
+            number |= (byte & 127) << shift
+            if not byte & 128:
+                return number, at
+            shift += 7
+
+    pending, seen = [(0, b'')], set()
+    while pending:
+        at, prefix = pending.pop()
+        assert at not in seen and at < len(trie)
+        seen.add(at)
+        terminal, cursor = uleb(at)
+        if terminal and prefix == symbol:
+            return True
+        cursor += terminal
+        assert cursor < len(trie)
+        children = trie[cursor]
+        cursor += 1
+        for _ in range(children):
+            end = trie.index(0, cursor)
+            label = trie[cursor:end]
+            child, cursor = uleb(end + 1)
+            if symbol.startswith(prefix + label):
+                pending.append((child, prefix + label))
+    return False
+
+
 def patch_native(original, framework):
     assert sha256(original).hexdigest() == BASE_NATIVE, 'Require exact supplied Build290 native executable'
     assert framework[:8] == bytes.fromhex('cffaedfe0c000001')
-    assert b'_AGViewerStillWatching\0' in framework, 'Framework must export spectator-state guard'
+    assert framework_exports(framework, b'_AGViewerStillWatching'), 'Framework must export spectator-state guard'
     assert original[CACHE_FILE:CACHE_FILE + 8] == bytes(8)
     assert original[CAVE_FILE:CAVE_FILE + 0x800] == bytes(0x800)
     result, edits = bytearray(original), []

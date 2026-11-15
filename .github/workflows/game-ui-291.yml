@@ -4,7 +4,7 @@ on:
   push:
     branches: [fix/ios-291-spectator-live]
 permissions:
-  contents: read
+  contents: write
 concurrency:
   group: game-ui-291
   cancel-in-progress: true
@@ -44,6 +44,54 @@ jobs:
             cat "native-wheel/build/$name.txt"
           done
           exit "$status"
+      - name: Package and verify Build291 IPA
+        shell: bash
+        run: |
+          py=native-wheel/build/device-qa/bin/python
+          target=ipa-output/Army2HoangGia-2.4.1-Build291-SpectatorLive-unsigned.ipa
+          "$py" native-wheel/package_291.py \
+            ipa-output/Army2HoangGia-2.4.1-Build290-JarServer-unsigned.ipa \
+            native-wheel/build/framework-291.zip "$target"
+          "$py" native-wheel/verify_endpoint290.py "$target" \
+            --report ipa-output/endpoint291-check.json
+          shasum -a 256 "$target" > ipa-output/Build291-SHA256SUMS.txt
+      - name: Save verified framework and regression logs through GitHub Git transport
+        shell: bash
+        run: |
+          delivery_ref=refs/heads/delivery/ios-291-spectator-live
+          delivery_worktree="$RUNNER_TEMP/army291-delivery-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          remote_tip="$(git ls-remote origin "$delivery_ref")"
+          starting_ref=HEAD
+          if [ -n "$remote_tip" ]; then
+            git fetch --depth=1 origin "$delivery_ref"
+            starting_ref=FETCH_HEAD
+          fi
+          git worktree add --detach "$delivery_worktree" "$starting_ref"
+          trap 'git worktree remove --force "$delivery_worktree"' EXIT
+          mkdir -p "$delivery_worktree/delivery/build291"
+          rm -f "$delivery_worktree"/delivery/build291/test_*.txt
+          cp native-wheel/build/framework-291.zip "$delivery_worktree/delivery/build291/"
+          cp native-wheel/build/test_*.txt "$delivery_worktree/delivery/build291/"
+          git -C "$delivery_worktree" add -A -- \
+            delivery/build291/framework-291.zip 'delivery/build291/test_*.txt'
+          if ! git -C "$delivery_worktree" diff --cached --quiet; then
+            git -C "$delivery_worktree" \
+              -c user.name='github-actions[bot]' \
+              -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+              commit -m "Deliver Build291 framework from $GITHUB_SHA [skip ci]"
+            git -C "$delivery_worktree" push origin "HEAD:$delivery_ref"
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Army2HoangGia-2.4.1-Build291-SpectatorLive-unsigned
+          path: |
+            ipa-output/Army2HoangGia-2.4.1-Build291-SpectatorLive-unsigned.ipa
+            ipa-output/Army2HoangGia-2.4.1-Build291-SpectatorLive-unsigned.validation.json
+            ipa-output/endpoint291-check.json
+            ipa-output/Build291-SHA256SUMS.txt
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 14
       - uses: actions/upload-artifact@v4
         if: always()
         with:

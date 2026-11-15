@@ -248,14 +248,22 @@ static int show(void *e,void *opaque){
     Watch *w=opaque;int v=w->v;
     uint8_t *canvas=global(AGNotesMaps[v].canvas);
     if(!canvas||!w->arena||!AGViewerStillWatching(v))return 0;
-    if(*(void **)(canvas+0xb8)==w->arena)return 1;
+    if(*(void **)(canvas+0xb8)==w->arena){
+        /* APK SP5 closes the loading dialog after showing the arena.
+           GameCanvas updates a modal instead of the scene while +108 is
+           non-null, even though the terrain can already be painted. */
+        *(void **)(canvas+0x108)=NULL;
+        return 1;
+    }
     /* cmd8 legitimately activates the room after SP3 saved the area list
        as back. The APK presents after SP5 without requiring that old screen
        to remain current. StillWatching already rejects canceled/ended views. */
     uintptr_t b=base();
     ((void (*)(void *))(b+AGBossNativeMaps[v].resetInput))(e);
     ((void (*)(void *,void *,void *))(b+AGSpectatorMaps[v].show))(e,w->arena,w->back);
-    return *(void **)(canvas+0xb8)==w->arena;
+    if(*(void **)(canvas+0xb8)!=w->arena)return 0;
+    *(void **)(canvas+0x108)=NULL;
+    return 1;
 }
 static int restore(void *e,void *opaque){
     Watch *w=opaque;int v=w->v;uint8_t *a=global(AGTurnMaps[v].arena_class);

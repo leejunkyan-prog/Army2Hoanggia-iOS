@@ -20,13 +20,16 @@ native_path = Path(sys.argv[2]) if len(sys.argv) > 2 else ROOT / 'build/base290-
 original = native_path.read_bytes()
 modified, edits = patch.patch_native(original, framework)
 assert edits and len(modified) == len(original)
-fw = lief.MachO.parse(list(framework)).at(0)
+fw = lief.MachO.parse(str(Path(sys.argv[1]))).at(0)
 assert '_AGViewerStillWatching' in {s.name for s in fw.exported_symbols}, 'dlsym cannot resolve a hidden symbol'
 image = lief.MachO.parse(str(native_path)).at(0)
 MAIN, HEAP, STACK, FAKE = 0x100000000, 0x600000000, 0x700000000, 0x400000000
-STOP, WATCH = FAKE, FAKE + 0x1000
+STOP, WATCH, DLSYM = FAKE, FAKE + 0x1000, FAKE + 0x1200
 ENV = HEAP + 0x100
 ARENA_CLASSES = [0x2082e30, 0x20b23a0, 0x20e0090, 0x210dd80, 0x213ba70, 0x2169760]
+# Use the original image's actual dynamic binding, independently of the
+# patcher's branch-target constant. This catches virtual/file offset mistakes.
+DLSYM_GOT, = [b.address for b in image.dyld_info.bindings if b.symbol.name == '_dlsym']
 
 
 class Engine:
@@ -39,6 +42,7 @@ class Engine:
             self.u.mem_write(segment.virtual_address, raw[segment.file_offset:segment.file_offset + segment.file_size])
         for address, size in ((HEAP, 0x10000), (STACK, 0x10000), (FAKE, 0x2000)):
             self.u.mem_map(address, size)
+        self.put(DLSYM_GOT, '<Q', DLSYM)
         self.missing = missing
         self.watching = False
         self.variant = 0
@@ -70,7 +74,7 @@ class Engine:
     def hook(self, uc, pc, size, opaque):
         if pc == STOP:
             uc.emu_stop()
-        elif pc == MAIN + patch.DYLSYM:
+        elif pc == DLSYM:
             name = bytes(uc.mem_read(self.reg(1), len(patch.SYMBOL)))
             assert name == b'AGViewerStillWatching\0', name
             self.lookups += 1
@@ -122,6 +126,6 @@ for v in range(6):
             assert unavailable.run(v, entry, local, turn, True) == (int(local == turn), 1, 0)
             cases += 3
 assert baseline.lookups == 0
-assert fixed.lookups == 6, ('successful dlsym should resolve once per PB', fixed.lookups)
+assert fixed.lookups == 1, ('successful dlsym should share its cached function across PBs', fixed.lookups)
 assert unavailable.lookups >= 6
 print(f'PASS original/patched ARM64 local-turn predicates: six PBs, wrapper and direct entry, {cases} state cases; spectator false, participant restoration, real AOT getters, missing-symbol fallback, JNI environment, SP/LR and x19-x29 preserved')
