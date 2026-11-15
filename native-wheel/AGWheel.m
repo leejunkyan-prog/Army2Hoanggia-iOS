@@ -15,6 +15,8 @@
 #include "BossNative.h"
 #include "ShipTrace.h"
 #include "WatchTrace.h"
+#include "SpectatorNative.h"
+#include "Spectator.h"
 #import "GameViewport.h"
 extern void AGInventoryTick(void *,int);
 
@@ -47,6 +49,7 @@ static double AGNow(void) { struct timespec t;clock_gettime(CLOCK_MONOTONIC,&t);
 // Retained ABI for the bridge; no diagnostic window, label or timer.
 __attribute__((visibility("default"))) void AGTurnStatusUpdate(int variant,int reason) {(void)variant;(void)reason;}
 __attribute__((visibility("default"))) void AGTurnPulse(void *env,int variant) {
+    if(AGViewerStillWatching(variant)&&!AGNativeWatchRendering(variant))return;
     AGNativeWatchTraceFrame(variant);
     if(atomic_load(&AGForeground)){
         AGBossTick(env,variant);

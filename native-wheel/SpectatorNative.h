@@ -20,4 +20,8 @@ int AGNativeWatchToggleCamera(int variant);
 void AGNativeWatchClearCameraKeys(int variant);
 void AGNativeWatchNudgeCamera(int variant,int code);
 void AGNativeWatchTick(void *env,int variant);
+/* Spectator simulation follows the visible native render callback. */
+__attribute__((visibility("default"))) void AGNativeWatchRenderFrame(void *env,int variant);
+__attribute__((visibility("default"))) void AGNativeWatchGameUpdate(void *env,void *arena,int variant);
+int AGNativeWatchRendering(int variant);
 int AGViewerActive(int variant);

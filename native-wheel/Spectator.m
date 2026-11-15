@@ -6,6 +6,7 @@
 #include "Spectator.h"
 #include "SpectatorNative.h"
 #include "WatchTrace.h"
+#import "WatchSurface.h"
 #include "Lobby.h"
 #import "GameViewport.h"
 
@@ -22,7 +23,7 @@ typedef NS_ENUM(int, WatchReceive) { PassToGame, Consumed, Snapshot, MatchEnded,
 @property(nonatomic) WatchPhase phase;
 @property(nonatomic) WatchAction action;
 @property(nonatomic) NSTimeInterval deadline;
-@property(nonatomic,strong) UIWindow *window;
+@property(nonatomic,weak) UIWindow *window;
 @property(nonatomic,weak) UIWindow *previous;
 @property(nonatomic,strong) WKWebView *web;
 @property(nonatomic,strong) NSMutableArray *pending;
@@ -362,7 +363,7 @@ void AGViewerTick(void *env,int variant) {
                 w.auxiliary=aux;
                 dispatch_async(dispatch_get_main_queue(),^{
                     [w.web evaluateJavaScript:[NSString stringWithFormat:@"watchNativeMenu(%d)",aux] completionHandler:nil];
-                    ((AGGameWindow *)w.window).passesGameTouches=aux;
+                    ((AGWatchSurface *)w.view).passesGameTouches=aux;
                 });
             }
             int angle=AGNativeWatchAngle(variant);
@@ -391,17 +392,17 @@ void AGViewerTick(void *env,int variant) {
 
 @implementation ArmyWatch
 - (void)loadView {
-    UIView *view=[UIView new];view.backgroundColor=UIColor.clearColor;self.view=view;
+    UIView *view=[AGWatchSurface new];view.opaque=NO;view.backgroundColor=UIColor.clearColor;self.view=view;
 }
 - (void)viewDidLayoutSubviews {
     [super viewDidLayoutSubviews];
     CGRect game=AGGameRect(self.view);
     self.web.frame=game;
-    ((AGGameWindow *)self.window).gameBottom=CGRectGetMaxY(game);
+    ((AGWatchSurface *)self.view).gameBottom=CGRectGetMaxY(game);
 }
 - (void)show {
     @synchronized(ArmyWatch.class){if(current!=self)return;}
-    if(!self.window){
+    if(!self.parentViewController){
         UIWindow *previous=visibleHost();
         if(!previous){
             if(!self.retryScheduled){
@@ -414,13 +415,10 @@ void AGViewerTick(void *env,int variant) {
             return;
         }
         self.previous=previous;
-        if(@available(iOS 13.0,*)){if(previous.windowScene)self.window=[[AGGameWindow alloc] initWithWindowScene:previous.windowScene];}
-        if(!self.window)self.window=[[AGGameWindow alloc] initWithFrame:previous.bounds];
-        ((AGGameWindow *)self.window).passesGameKeys=YES;
-        ((AGGameWindow *)self.window).gameBottom=CGRectGetMaxY(AGGameRect(previous.rootViewController.view));
+        self.window=previous;
+        if(!AGWatchMount(self,previous))return;
+        ((AGWatchSurface *)self.view).gameBottom=CGRectGetMaxY(AGGameRect(self.view));
         if(!self.keypadCaptured){AGViewportWheelVisible(1);self.keypadCaptured=YES;}
-        self.window.windowLevel=UIWindowLevelAlert+1;
-        self.window.rootViewController=self;[self.window makeKeyAndVisible];
     }
     if(!self.watchdog){
         __weak ArmyWatch *watch=self;
@@ -479,8 +477,12 @@ void AGViewerTick(void *env,int variant) {
     if(now()-self.traceSavedAt<1)return;
     self.traceSavedAt=now();
     AGWatchTrace trace;if(!AGNativeWatchTraceCopy(self.variant,&trace))return;
-    NSDictionary *report=@{@"build":@292,@"pb":@(self.variant+1),@"phase":@(self.phase),
+    uint64_t render[5]={0};AGNativeWatchTraceRenderCopy(self.variant,render);
+    NSDictionary *report=@{@"build":@293,@"pb":@(self.variant+1),@"phase":@(self.phase),
         @"snapshot_ready":@(self.snapshotReceived),@"native_running":@(AGNativeWatchRunning(self.variant)),
+        @"watch_active":@(AGViewerActive(self.variant)),@"still_watching":@(AGViewerStillWatching(self.variant)),
+        @"render_callbacks":@(render[0]),@"render_steps":@(render[1]),@"render_completed":@(render[2]),
+        @"render_failures":@(render[3]),@"canvas_updates_deferred":@(render[4]),
         @"scene_entries":@(trace.frames),@"received_packets":@(trace.packets),
         @"last_command":@(trace.command),@"last_snapshot_operation":@(trace.operation),
         @"wait_count":@(trace.waits),@"wait_kind":@(trace.waitKind),@"wait_actor":@(trace.waitActor),
@@ -488,16 +490,15 @@ void AGViewerTick(void *env,int variant) {
         @"scene_exceptions":@(trace.exceptions),@"first_exception":[NSString stringWithUTF8String:trace.exception]?:@""};
     NSData *data=[NSJSONSerialization dataWithJSONObject:report options:NSJSONWritingPrettyPrinted error:nil];
     NSString *directory=NSSearchPathForDirectoriesInDomains(NSDocumentDirectory,NSUserDomainMask,YES).firstObject;
-    if(data&&directory)[data writeToFile:[directory stringByAppendingPathComponent:@"Watch292-diagnostic.json"] atomically:YES];
+    if(data&&directory)[data writeToFile:[directory stringByAppendingPathComponent:@"Watch293-diagnostic.json"] atomically:YES];
 }
 - (void)close {
     [self.watchdog invalidate];self.watchdog=nil;
     [self.web.configuration.userContentController removeScriptMessageHandlerForName:@"viewer"];
     [self.web stopLoading];self.web.navigationDelegate=nil;
-    BOOL restore=self.window.isKeyWindow;
     if(self.keypadCaptured){AGViewportWheelVisible(0);self.keypadCaptured=NO;}
-    self.window.hidden=YES;self.window.rootViewController=nil;self.window=nil;
-    if(restore){UIWindow *previous=self.previous;[(previous&&!previous.hidden?previous:visibleHost()) makeKeyWindow];}
+    AGWatchUnmount(self);
+    self.window=nil;self.previous=nil;
 }
 - (void)userContentController:(WKUserContentController *)controller didReceiveScriptMessage:(WKScriptMessage *)message {
     if(message.webView!=self.web||!message.frameInfo.isMainFrame)return;

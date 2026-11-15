@@ -27,6 +27,9 @@ int AGNativeWatchToggleCamera(int v){return 0;}
 void AGNativeWatchClearCameraKeys(int v){}
 void AGNativeWatchNudgeCamera(int v,int code){}
 void AGNativeWatchTick(void *e,int v){}
+void AGNativeWatchRenderFrame(void *e,int v){}
+void AGNativeWatchGameUpdate(void *e,void *arena,int v){}
+int AGNativeWatchRendering(int v){return 0;}
 #else
 #include <mach-o/dyld.h>
 #include <pthread.h>
@@ -35,6 +38,7 @@ static pthread_mutex_t watchLock=PTHREAD_MUTEX_INITIALIZER;
 #include "TurnMap.h"
 #include "NotesMap.h"
 #include "BossNativeMap.h"
+#include "WatchTrace.h"
 extern int AGWheelGuard(void *,int (*)(void *,void *),void *,void *);
 typedef struct {uint8_t *encoded;void *image;int size,width,height;uint64_t hash;} TileImage;
 typedef struct {
@@ -45,13 +49,19 @@ typedef struct {
     uint8_t oldLocal,oldBackground,oldMode,oldCameraMode,restoreCamera,oldTurn,oldFlash;
     uint8_t oldTerrainFlags[3];
     uint8_t oldArenaState[6];
-    uint64_t moveAt;
+    uint64_t moveAt,renderAt;
+    uint32_t lastCanvasStep;
+    int flashSteps;
     TileImage images[64];int imageCount,imagePixels;
 } Watch;
 static Watch watches[6];
 static atomic_int cameraKeys[6],cameraNudge[6],freeCamera[6],cameraChanged[6];
 static atomic_int watchOption[6];
 static atomic_int auxiliary[6],running[6],watchAngle[6];
+static atomic_int renderStepping[6];
+/* Original AOT update prologues displaced by the existing post-update hooks.
+   Calling these avoids re-entering the managed update adapter. */
+static const uintptr_t nativeUpdates[6]={0x24f91d0,0x24fa4b0,0x24fb790,0x24fca70,0x24fdd50,0x24ff030};
 static const struct {
     uintptr_t force,team,friends,messageNew,messageInit,messageOpen;
 } menuMethods[6]={
@@ -502,6 +512,55 @@ void AGNativeWatchOption(int v,int option){
     if(v>=0&&v<6&&(option==1||option==3||option==4||option==5))atomic_store(&watchOption[v],option);
 }
 void AGNativeWatchTick(void *e,int v){if(pthread_mutex_trylock(&watchLock))return;tickNative(e,v);pthread_mutex_unlock(&watchLock);}
+int AGNativeWatchRendering(int v){return v>=0&&v<6&&atomic_load(&renderStepping[v]);}
+void AGNativeWatchGameUpdate(void *e,void *arena,int v){
+    if(!e||!arena||v<0||v>=6)return;
+    /* A watched scene has one clock: its visible render callback. The old
+       canvas thread must not advance the same actors a second time. */
+    if(AGViewerStillWatching(v)||AGNativeWatchRunning(v)){
+        AGNativeWatchTraceRender(v,4);
+        return;
+    }
+    ((void (*)(void *,void *))(base()+nativeUpdates[v]))(e,arena);
+}
+static int renderUpdate(void *e,void *opaque){
+    Watch *w=opaque;
+    ((void (*)(void *,void *))(base()+nativeUpdates[w->v]))(e,w->arena);
+    uint8_t *canvas=global(AGNotesMaps[w->v].canvas);
+    if(canvas){
+        uint32_t sequence=*(uint32_t *)(canvas+0x124);
+        /* The Java canvas normally completes the 20-frame flash. When
+           that loop is idle, retain its exact completion predicate here. */
+        if(canvas[0x13c]&&sequence==w->lastCanvasStep){
+            if(++w->flashSteps>=20){canvas[0x13c]=0;*(int *)(canvas+0x118)=0;w->flashSteps=0;}
+        }else w->flashSteps=0;
+        w->lastCanvasStep=sequence;
+    }
+    return 1;
+}
+extern void AGTurnPulse(void *,int);
+void AGNativeWatchRenderFrame(void *e,int v){
+    if(!e||v<0||v>=6)return;
+    /* A render Env belongs to the attached game thread. Never call native
+       Java routines from UIKit timers or reuse another thread's Env. */
+    AGViewerTick(e,v);
+    if(!AGViewerStillWatching(v)||!AGNativeWatchRunning(v))return;
+    AGNativeWatchTraceRender(v,0);
+    if(atomic_load(&renderStepping[v])||pthread_mutex_trylock(&watchLock))return;
+    Watch *w=&watches[v];uint8_t *canvas=global(AGNotesMaps[v].canvas);
+    if(!w->started||!canvas||*(void **)(canvas+0xb8)!=w->arena){pthread_mutex_unlock(&watchLock);return;}
+    struct timespec clock;clock_gettime(CLOCK_MONOTONIC,&clock);
+    uint64_t at=(uint64_t)clock.tv_sec*1000000000+(uint64_t)clock.tv_nsec;
+    if(w->renderAt&&at>=w->renderAt&&at-w->renderAt<30000000){pthread_mutex_unlock(&watchLock);return;}
+    w->renderAt=at;
+    atomic_store(&renderStepping[v],1);
+    AGNativeWatchTraceRender(v,1);
+    int ok=guard(e,renderUpdate,w);
+    AGNativeWatchTraceRender(v,ok>0?2:3);
+    if(ok>0)AGTurnPulse(e,v);
+    atomic_store(&renderStepping[v],0);
+    pthread_mutex_unlock(&watchLock);
+}
 #endif
 
 

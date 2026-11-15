@@ -11,6 +11,7 @@ static struct {
     atomic_uint_fast64_t frames,packets,exceptions,waits,expirations;
     atomic_int command,operation,waitKind,waitActor,waitStage;
     char exception[512];
+    atomic_uint_fast64_t render[5];
 } traces[6];
 static pthread_mutex_t traceLock=PTHREAD_MUTEX_INITIALIZER;
 void AGNativeWatchTraceReset(int v){
@@ -20,6 +21,7 @@ void AGNativeWatchTraceReset(int v){
     atomic_store(&traces[v].expirations,0);atomic_store(&traces[v].command,0);
     atomic_store(&traces[v].operation,-1);atomic_store(&traces[v].waitKind,-1);
     atomic_store(&traces[v].waitActor,-1);atomic_store(&traces[v].waitStage,0);
+    for(int i=0;i<5;i++)atomic_store(&traces[v].render[i],0);
     pthread_mutex_lock(&traceLock);traces[v].exception[0]=0;pthread_mutex_unlock(&traceLock);
 }
 void AGNativeWatchTraceFrame(int v){
@@ -71,5 +73,13 @@ int AGNativeWatchTraceCopy(int v,AGWatchTrace *out){
         .operation=atomic_load(&traces[v].operation),.waitKind=atomic_load(&traces[v].waitKind),
         .waitActor=atomic_load(&traces[v].waitActor),.waitStage=atomic_load(&traces[v].waitStage)};
     pthread_mutex_lock(&traceLock);memcpy(out->exception,traces[v].exception,sizeof out->exception);pthread_mutex_unlock(&traceLock);
+    return 1;
+}
+void AGNativeWatchTraceRender(int v,int stage){
+    if(v>=0&&v<6&&stage>=0&&stage<5)atomic_fetch_add(&traces[v].render[stage],1);
+}
+int AGNativeWatchTraceRenderCopy(int v,uint64_t out[5]){
+    if(v<0||v>=6||!out)return 0;
+    for(int i=0;i<5;i++)out[i]=atomic_load(&traces[v].render[i]);
     return 1;
 }
