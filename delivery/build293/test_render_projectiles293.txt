@@ -1,0 +1,4 @@
+PASS compiled iPhone ARM64: six variants, snapshot-only presentation, map/HP/positions, independent destructible terrain, camera, nonblocking leave, lost-notify recovery and reopening
+PASS original Build290 ARM64 dispatcher: cmd21 movement scheduling; cmd22 full 46-point trajectory decoding, native Actor.fire and projectile initialization; cmd51 64-bit HP arguments. Animation wait and rendering are separate tests.
+PASS original ARM64: two consecutive shots spawn, follow 43 trajectory frames, remove bullets and clear busy; original clock ticks. Resource/JVM/transport boundaries mocked; no claim of physical-device freeze reproduction.
+PASS compiled render scheduler -> original ARM64 arena.update -> projectile and clock bodies: two consecutive complete trajectories, busy-flag release, advancing clock, no second Java update. Actor/resource/JVM/transport boundaries mocked; physical live-room validation remains pending.
