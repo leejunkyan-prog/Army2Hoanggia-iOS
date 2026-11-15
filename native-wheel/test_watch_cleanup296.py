@@ -7,6 +7,8 @@ socket are boundaries; base activation, key reset and screen setter are AOT.
 import base64
 from pathlib import Path
 import test_native_watch as t
+from unicorn import UcError
+from unicorn.arm64_const import UC_ARM64_REG_PC
 
 raw=(Path(__file__).parent/'build/base293-native').read_bytes()
 bases=(0x5ad9e8,0x69625c,0x77af20,0x85fbe4,0x9448a8,0xa2956c)
@@ -25,6 +27,26 @@ def load(at,size):
 
 def reject_virtual():
     raise AssertionError('CLEANUP_DEPENDS_ON_DESTINATION_OVERRIDE: room reply and battlefield return blocked')
+
+# Establish the actual AOT dependency separately from the override trap.
+# The area screen becomes current before its null row dereference faults.
+for at,size in ((0x573b9c,0xf4),(0x5ad9e8,0x38),(0x50b910,0x40)):load(at,size)
+missing_rows=t.alloc(0x100);t.put(t.MAIN+area_classes[0],'<Q',missing_rows)
+t.put(t.MAIN+t.canvas[0]+9,'<B',2)
+probe_boundaries={
+    t.MAIN+0x5acdf8:lambda:t.ret(),t.MAIN+0x50c0e0:lambda:t.ret(37),
+    t.MAIN+0x5ac398:lambda:t.ret(20),t.MAIN+0x50bd58:lambda:t.ret(650),
+}
+t.extraNative.update(probe_boundaries)
+t.symbols['_probeArea296']=t.MAIN+0x573b9c
+try:
+    t.call('_probeArea296',t.ENV,t.objects[0][4])
+except UcError:
+    assert t.u.reg_read(UC_ARM64_REG_PC)==t.MAIN+0x573c4c
+    assert t.get(t.objects[0][1]+0xb8,'<Q')==t.objects[0][4]
+else:
+    raise AssertionError('Missing native area vector unexpectedly initialized')
+for address in probe_boundaries:t.extraNative.pop(address)
 
 for v,base in enumerate(bases):
     canvas=t.objects[v][1]

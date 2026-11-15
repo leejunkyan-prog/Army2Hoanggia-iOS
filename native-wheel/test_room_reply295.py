@@ -15,6 +15,9 @@ t.put(t.MAIN + 0x2089f70 + 9, '<B', 2)
 for start, end in ((0x573060, 0x5730ac), (0x573a60, 0x573b4c),
                    (0x573b9c, 0x573c90), (0x5ad9e8, 0x5ada20)):
     t.nativeRanges.append((t.MAIN + start, t.MAIN + end))
+    # The snapshot fixture has already visited the base activator as a
+    # mocked boundary. Drop that translation after loading the real AOT.
+    t.u.ctl_remove_cache(t.MAIN + start, t.MAIN + end)
 
 def vector_new():
     p = t.alloc(0x40)
@@ -92,3 +95,4 @@ for count in (14, 67, 1, 14):
 
 print('PASS unchanged iPhone ARM64 cmd7 room0 reply: complete 14/67/1-area lists, '
       'all row fields, replacement replies, selection reset and native screen activation')
+
