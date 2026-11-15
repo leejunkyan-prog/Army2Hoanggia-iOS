@@ -2,7 +2,7 @@ name: Build Army2 iOS 293 spectator live playback
 on:
   workflow_dispatch:
   push:
-    branches: [fix/ios-293-live-spectator]
+    branches: [fix/ios-293-spectator-render-clock]
 permissions:
   contents: read
 concurrency:
@@ -115,3 +115,17 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - run: node native-wheel/test_lobby.js
       - run: node native-wheel/test_native_watch_ui.js
+  native-overlay:
+    runs-on: macos-26
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Exercise production overlay on iOS Simulator
+        run: bash native-wheel/test_watch_overlay293.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Army2HoangGia-Build293-overlay-simulator
+          path: native-wheel/build/overlay293-result.json
+          if-no-files-found: warn
+          retention-days: 14
