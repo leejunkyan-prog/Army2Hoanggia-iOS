@@ -260,8 +260,8 @@ static int show(void *e,void *opaque){
     if(!canvas||!w->arena||!AGViewerStillWatching(v))return 0;
     if(*(void **)(canvas+0xb8)==w->arena){
         /* APK SP5 closes the loading dialog after showing the arena.
-           GameCanvas updates a modal instead of the scene while +108 is
-           non-null, even though the terrain can already be painted. */
+           +108 selects dialog input; scene.update runs before that input
+           branch, so this cleanup does not establish animation progress. */
         *(void **)(canvas+0x108)=NULL;
         return 1;
     }
