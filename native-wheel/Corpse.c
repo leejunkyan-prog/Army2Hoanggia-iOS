@@ -10,6 +10,7 @@
 #include "TurnMap.h"
 #include "ShipTrace.h"
 #include "Spectator.h"
+#include "CraftDiagnostics.h"
 #include "Lobby.h"
 #include "Aura.h"
 #include "BossNative.h"
@@ -49,6 +50,7 @@ static int airshipPart(const uint8_t *p){return p&&p[0x16c]>=17&&p[0x16c]<=21;}
 static int shortBE(const uint8_t *p){return (int16_t)((p[0]<<8)|p[1]);}
 __attribute__((visibility("default"))) int AGCorpseReceive(void *env,void *message,int v){
     if(!env||!message||v<0||v>=6)return 0;
+    AGCraftReceive(message,v);
     if(AGBossReceive(env,message,v))return 1;
     if(AGAuraReceive(env,message,v))return 1;
     if(AGLobbyReceive(env,message,v))return 1;
@@ -115,3 +117,4 @@ __attribute__((visibility("default"))) int AGCorpseUpdate(void *env,void *actor,
     }
     pthread_mutex_unlock(&corpseMutex);return 1;
 }
+

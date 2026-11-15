@@ -146,7 +146,7 @@ static void saveSnapshot(void){
         complete[@"thread_sampling"] = @"this_process_only; no thread suspension; image-relative code locations; waiting=3, running=1";
 #endif
 #ifdef AG_CRAFT_DIAGNOSTIC
-        complete[@"diagnostic_revision"]=@"300-craft-detail-state-1";
+        complete[@"diagnostic_revision"]=[NSString stringWithFormat:@"%d-craft-detail-state-2",AG_RETURN_BUILD];
         complete[@"craft_events"]=craftEvents();
         complete[@"craft_legend"]=@{@"screen_kind":@{@"0":@"outside_inventory",@"1":@"inventory",@"2":@"inventory_child"},
             @"event_kind":@{@"1":@"detail_classifier",@"2":@"receive_before_native_dispatch"},

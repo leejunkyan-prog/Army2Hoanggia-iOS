@@ -122,13 +122,17 @@ static int NForgeItem(void *env,void *opaque){
     ((void (*)(void *,void *,const uint16_t *))jni[166])(env,detail,chars);
     job->reason=match?CR_PREFIX_MATCH:CR_PREFIX_MISMATCH;return match;
 }
-__attribute__((visibility("default"))) int AGRecipeDetail(void *env,void *item){
+static void *NRecipeDetailObject(void *env,void *item){
     void *volatile original=item;
     item=AGInventoryResolve(env,item);NForgeJob job={.item=item,.reason=CR_INVALID};
     int result=env&&item?NRun(env,NForgeItem,&job):0;
     AGCraftDetail(env,original,item,result,result<0?CR_EXCEPTION:job.reason);
-    return result>0;
+    return result>0?item:NULL;
 }
+__attribute__((visibility("default"))) int AGRecipeDetail(void *env,void *item){return NRecipeDetailObject(env,item)!=NULL;}
+/* The301 callback keeps this exact resolved object through its native send,
+   instead of selecting again after the wait UI can schedule another update. */
+__attribute__((visibility("default"))) void *AGRecipeDetailObject(void *env,void *item){return NRecipeDetailObject(env,item);}
 typedef struct {int variant;AGLobbyAccount *account;} NLobbyAccountJob;
 static int NLobbyAccount(void *env,void *context){
     NLobbyAccountJob *job=context;
@@ -242,7 +246,6 @@ void AGNotesTick(void *env,int variant){
 }
 __attribute__((visibility("default"))) int AGNotesReceive(void *env,void *message,int variant){
     if(!env||!message||variant<0||variant>=6)return 0;int command=*(int8_t *)((uint8_t *)message+0x30);
-    AGCraftReceive(message,variant);
     if(command==-110||command==-124)return AGStatsReceive(env,message,variant);
     if(command==106||command==20){AGBlindReceive(env,message,variant);return 0;}
     if(command!=-122&&command!=-123)return 0;NInit();
