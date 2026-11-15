@@ -1,0 +1,1 @@
+PASS recipe dialog rebinding, actual B288 AOT: 6 variants, 144 consecutive craft/reopen-detail cycles, same and different recipes, refreshed handles during child/menu, exactly 1 correct request per tap, no chest exit

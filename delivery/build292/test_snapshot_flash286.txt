@@ -1,0 +1,2 @@
+PASS compiled iPhone ARM64: six variants, snapshot-only presentation, map/HP/positions, independent destructible terrain, camera, nonblocking leave, lost-notify recovery and reopening
+PASS actual B285 ARM64 HP flash: SP5 scene presented, native clock/flash state applied, receive thread does not wait during snapshot, SP7 completes, leave restores room

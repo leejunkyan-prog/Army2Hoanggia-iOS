@@ -1,0 +1,2 @@
+PASS compiled iPhone ARM64: six variants, snapshot-only presentation, map/HP/positions, independent destructible terrain, camera, nonblocking leave, lost-notify recovery and reopening
+PASS compiled snapshot HP: six PBs, full signed HP state, native death, no damage flash/wait/clock mutation, malformed/missing actors pass, live and canceled sessions use original handlers

@@ -1,0 +1,1 @@
+PASS actual Arena.update exception call sites: six PBs, logger before unchanged original print, JNI arguments, SP/LR/x19-x29 preserved, missing-symbol fallback and shared resolver cache

@@ -1,0 +1,1 @@
+PASS compiled ARM64 bridge: six variants, 600 updates, zero blocking monitor calls, unchanged server vectors, stable unchanged frames, vector replacement, dialog deferral, crafting return, recipe resolution, reopen sorting and balanced JNI roots

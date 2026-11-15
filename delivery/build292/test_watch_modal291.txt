@@ -1,0 +1,2 @@
+PASS compiled iPhone ARM64: six variants, snapshot-only presentation, map/HP/positions, independent destructible terrain, camera, nonblocking leave, lost-notify recovery and reopening
+PASS original GameCanvas modal input routing; compiled snapshot clears stale modal, restores battle input, six PBs/re-entry; live and canceled unrelated dialogs preserved

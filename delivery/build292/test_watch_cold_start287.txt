@@ -1,0 +1,2 @@
+PASS compiled iPhone ARM64: six variants, snapshot-only presentation, map/HP/positions, independent destructible terrain, camera, nonblocking leave, lost-notify recovery and reopening
+PASS original ARM64 initialization: no actor array before SP5, native start allocates its own roster, 3 cold-start/re-entry snapshots complete
