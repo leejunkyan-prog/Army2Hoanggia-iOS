@@ -1,0 +1,2 @@
+PASS compiled iPhone ARM64: six variants, snapshot-only presentation, map/HP/positions, independent destructible terrain, camera, nonblocking leave, lost-notify recovery and reopening
+PASS original ARM64 screen methods: room activation between SP3/SP5, arena/map/actors presented, 3 leave/re-entry cycles, canceled watch cannot present

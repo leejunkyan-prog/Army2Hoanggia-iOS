@@ -1,0 +1,1 @@
+PASS original/patched ARM64 local-turn predicates: six PBs, wrapper and direct entry, 216 state cases; spectator false, participant restoration, real AOT getters, missing-symbol fallback, JNI environment, SP/LR and x19-x29 preserved

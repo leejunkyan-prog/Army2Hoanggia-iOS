@@ -1,0 +1,1 @@
+PASS real canvas render/update bridges: six PBs, exact JNI arguments, original paint prologues, register/stack preservation, shared dynamic caches and safe missing-export fallback
