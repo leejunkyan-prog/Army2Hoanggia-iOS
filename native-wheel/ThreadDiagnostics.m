@@ -12,13 +12,29 @@
 #include "ReturnDiagnostics.h"
 #ifdef AG_RETURN_THREAD_DIAGNOSTIC
 static atomic_uint gamePorts[6],renderPorts[6];
+static atomic_int rebindGame[6];
+static int exited(mach_port_t port){
+    if(!port)return 0;
+    mach_port_type_t type=0;
+    return mach_port_type(mach_task_self(),port,&type)==KERN_SUCCESS&&(type&MACH_PORT_TYPE_DEAD_NAME)!=0;
+}
+int AGThreadGameExited(int v){return v>=0&&v<6&&exited(atomic_load(&gamePorts[v]));}
+int AGThreadRebindGame(int v){
+    if(!AGThreadGameExited(v))return 0;
+    atomic_store(&rebindGame[v],1);return 1;
+}
 void AGThreadPulse(int v,int source){
     if(v<0||v>=6)return;
     atomic_uint *slot=source?&renderPorts[v]:&gamePorts[v];
-    if(atomic_load(slot))return;
+    unsigned before=atomic_load(slot);
+    if(before&&(source||!atomic_load(&rebindGame[v])))return;
     /* Retain one send right per callback source, even if the thread exits. */
-    mach_port_t port=mach_thread_self();unsigned empty=0;
-    if(!atomic_compare_exchange_strong(slot,&empty,port))mach_port_deallocate(mach_task_self(),port);
+    mach_port_t port=mach_thread_self();
+    if(before&&!exited(before)){mach_port_deallocate(mach_task_self(),port);return;}
+    if(atomic_compare_exchange_strong(slot,&before,port)){
+        if(before)mach_port_deallocate(mach_task_self(),before);
+        if(!source)atomic_store(&rebindGame[v],0);
+    }else mach_port_deallocate(mach_task_self(),port);
 }
 static uint64_t nowMillis(void){struct timespec t;clock_gettime(CLOCK_MONOTONIC,&t);return (uint64_t)t.tv_sec*1000+t.tv_nsec/1000000;}
 static uint64_t clean(uint64_t p){return p&UINT64_C(0x0000ffffffffffff);}

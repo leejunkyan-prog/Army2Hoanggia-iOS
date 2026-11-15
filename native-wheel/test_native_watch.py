@@ -31,6 +31,8 @@ for b in m.dyld_info.bindings:
 def reg(i):return u.reg_read(UC_ARM64_REG_X0+i)
 def ret(v=0):u.reg_write(UC_ARM64_REG_X0,v&((1<<64)-1));u.reg_write(UC_ARM64_REG_PC,u.reg_read(UC_ARM64_REG_LR))
 now=100.0
+threadPort=42
+deadPorts=set()
 stillWatching=True
 waitCalls=0
 waitStop=False
@@ -80,14 +82,16 @@ def hook(uc,pc,size,_):
     if pc==symbols.get('_AGTurnAwait') and snapshotSync:
         raise AssertionError('Snapshot synchronization reached the indefinite participant wait')
     if pc==symbols.get('_AGViewerStillWatching'):ret(stillWatching);return
+    if pc==symbols.get('_AGViewerActive'):ret(stillWatching);return
     if pc==symbols.get('_AGWheelGuard'):
         fn=reg(1);job=reg(2);u.reg_write(UC_ARM64_REG_X1,job);u.reg_write(UC_ARM64_REG_PC,fn);return
     if pc in imports:
         name=imports[pc]
         if name=='__dyld_get_image_header':ret(MAIN)
         elif name=='_clock_gettime':put(reg(1),'<qq',int(now),round((now-int(now))*1000000000));ret()
-        elif name=='_mach_thread_self':ret(42)
+        elif name=='_mach_thread_self':ret(threadPort)
         elif name=='_mach_port_deallocate':ret()
+        elif name=='_mach_port_type':put(reg(2),'<I',0x100000 if reg(1) in deadPorts else 0x10000);ret()
         elif name in ('_pthread_mutex_lock','_pthread_mutex_trylock'):
             if name=='_pthread_mutex_trylock' and busy:ret(16)
             else:lock+=1;assert lock==1;ret()
@@ -156,6 +160,7 @@ u.hook_add(UC_HOOK_CODE,hook,begin=FAKE,end=FAKE+0x40000)
 u.hook_add(UC_HOOK_CODE,hook,begin=MAIN,end=MAIN+0x3000000)
 u.hook_add(UC_HOOK_CODE,hook,begin=symbols['_AGWheelGuard'],end=symbols['_AGWheelGuard'])
 u.hook_add(UC_HOOK_CODE,hook,begin=symbols['_AGViewerStillWatching'],end=symbols['_AGViewerStillWatching'])
+u.hook_add(UC_HOOK_CODE,hook,begin=symbols['_AGViewerActive'],end=symbols['_AGViewerActive'])
 u.hook_add(UC_HOOK_CODE,hook,begin=symbols['_AGTurnAwait'],end=symbols['_AGTurnAwait'])
 def call(name,*args):
     u.reg_write(UC_ARM64_REG_SP,STACK+0x30000);u.reg_write(UC_ARM64_REG_LR,STOP)

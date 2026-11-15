@@ -5,6 +5,7 @@
 #include <time.h>
 #include "ReturnDiagnostics.h"
 #include "ThreadDiagnostics.h"
+#include "CanvasRecovery.h"
 #ifdef AG_RETURN_DIAGNOSTIC
 static struct {
     atomic_uint_fast64_t gameTicks,renderTicks,inputEvents,blockedInputs;
@@ -74,6 +75,11 @@ static NSDictionary *snapshot(int v,uint64_t at){
     NSArray *ages=@[@"game_age_ms",@"render_age_ms",@"input_age_ms",@"sample_age_ms"];
     for(int i=0;i<4;i++)s[ages[i]]=times[i]?@(at>=times[i]?at-times[i]:0):@(-1);
     for(int i=0;i<RD_COUNT;i++)s[[NSString stringWithUTF8String:names[i]]]=@(d.native[i]);
+#ifdef AG_CANVAS_RECOVERY
+    AGCanvasRecovery recovery={0};AGCanvasRecoveryCopy(v,&recovery);
+    s[@"canvas_recovery"]=@{@"attempts":@(recovery.attempts),@"recovered":@(recovery.recovered),
+        @"failures":@(recovery.failures),@"armed":@(recovery.armed),@"pending":@(recovery.pending),@"status":@(recovery.status)};
+#endif
     return s;
 }
 static void saveSnapshot(void){

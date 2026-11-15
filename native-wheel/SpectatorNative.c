@@ -8,6 +8,7 @@
 #include "SpectatorNative.h"
 #include "Spectator.h"
 #include "ReturnDiagnostics.h"
+#include "CanvasRecovery.h"
 #ifdef AG_WHEEL_PREVIEW
 int AGNativeWatchAvailable(void){return 0;}
 int AGNativeWatchFree(int v){return 0;}
@@ -613,6 +614,7 @@ void AGNativeWatchRenderFrame(void *e,int v){
     /* A render Env belongs to the attached game thread. Never call native
        Java routines from UIKit timers or reuse another thread's Env. */
     AGViewerTick(e,v);
+    AGCanvasRecoveryFrame(e,v,AGViewerStillWatching(v)||AGNativeWatchRunning(v));
     if(!AGViewerStillWatching(v)||!AGNativeWatchRunning(v))return;
     AGNativeWatchTraceRender(v,0);
     if(atomic_load(&renderStepping[v])||pthread_mutex_trylock(&watchLock))return;
