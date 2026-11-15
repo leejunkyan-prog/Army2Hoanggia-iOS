@@ -36,6 +36,9 @@ typedef NS_ENUM(int, WatchReceive) { PassToGame, Consumed, Snapshot, MatchEnded,
 @property(nonatomic) int shownAngle;
 @property(nonatomic) int switchToPB;
 @property(nonatomic) NSTimeInterval traceSavedAt;
+@property(nonatomic) NSTimeInterval roomReturnRetryAt;
+@property(nonatomic) int roomReturnAttempts;
+@property(nonatomic) BOOL roomReturnSent;
 - (void)show;
 - (void)close;
 - (void)flush;
@@ -54,6 +57,7 @@ static atomic_int snapshotCalls[6];
 static atomic_int pendingPB[6];
 static ArmyWatch *pendingLeave[6];
 static ArmyWatch *closingWatch[6];
+static ArmyWatch *pendingRoomReturn[6];
 int AGViewerActive(int v){
     return v>=0&&v<6&&(atomic_load(&active)&&atomic_load(&activeVariant)==v);
 }
@@ -140,6 +144,7 @@ static void finish(ArmyWatch *w) {
     current=nil;atomic_store(&active,false);
     atomic_store(&watching[w.variant],false);
     AGNativeWatchClearCameraKeys(w.variant);
+    memset(heldKeys[w.variant],0,sizeof heldKeys[w.variant]);
     if(w.switchToPB)atomic_store(&pendingPB[w.variant],w.switchToPB);
     closingWatch[w.variant]=w;
     if(!atomic_load(&nativeCleanup[w.variant])&&!w.battlefield){
@@ -225,7 +230,7 @@ static WatchReceive receiveState(void *env,void *message,int variant,NSData *__s
                 if(n<4||p[0]!=0x53||p[1]!=0x50||p[2]!=1)return 1;
                 if(p[3]==0) {
                     if(n<16 || p[4]>1 || n!=16+(NSUInteger)(p[14]*256+p[15]))return 1;
-                    if((w&&w.phase!=Offered)||atomic_load(&nativeCleanup[variant]))return 1;
+                    if((w&&w.phase!=Offered)||atomic_load(&nativeCleanup[variant])||pendingRoomReturn[variant])return 1;
                     uintptr_t conn=AGViewerConnection(env,variant);
                     if(!conn)return 1;
                     uintptr_t wait=AGViewerWaitToken(variant);
@@ -348,6 +353,30 @@ void AGViewerTick(void *env,int variant) {
     }
     if(closing)dispatch_async(dispatch_get_main_queue(),^{[closing close];});
     if(closing.battlefield&&!closing.switchToPB)AGLobbyWatchFinished(variant,closing.connection);
+    /* Returning to a saved screen does not request its areas. Both normal
+       SP6 completion and manual SP2 leave must rejoin room0 on this same
+       session, after cleanup (and after the manual leave message). */
+    ArmyWatch *returning=nil;
+    @synchronized(ArmyWatch.class){
+        if(closing&&!closing.battlefield&&!closing.switchToPB&&
+           closing.phase!=Offered&&closing.action!=Accept)pendingRoomReturn[variant]=closing;
+        ArmyWatch *queued=pendingRoomReturn[variant];
+        if(queued&&now()>=queued.roomReturnRetryAt){returning=queued;pendingRoomReturn[variant]=nil;}
+    }
+    if(returning&&AGViewerConnection(env,variant)==returning.connection){
+        const uint8_t room=0;
+        returning.roomReturnAttempts++;
+        returning.roomReturnSent=AGViewerSend(env,variant,returning.connection,7,&room,1)>0;
+        @synchronized(ArmyWatch.class){
+            if(!returning.roomReturnSent&&!current&&!pendingRoomReturn[variant]){
+                returning.roomReturnRetryAt=now()+1;
+                pendingRoomReturn[variant]=returning;
+            }
+        }
+        dispatch_async(dispatch_get_main_queue(),^{
+            if(!AGViewerActive(variant)){returning.traceSavedAt=0;[returning checkDeadline];}
+        });
+    }
     int pb=atomic_exchange(&pendingPB[variant],0);
     if(pb)AGNativeWatchSwitch(env,pb-1);
     AGNativeWatchTick(env,variant);
@@ -478,8 +507,9 @@ void AGViewerTick(void *env,int variant) {
     self.traceSavedAt=now();
     AGWatchTrace trace;if(!AGNativeWatchTraceCopy(self.variant,&trace))return;
     uint64_t render[5]={0};AGNativeWatchTraceRenderCopy(self.variant,render);
-    NSDictionary *report=@{@"build":@294,@"pb":@(self.variant+1),@"phase":@(self.phase),
+    NSDictionary *report=@{@"build":@295,@"pb":@(self.variant+1),@"phase":@(self.phase),
         @"snapshot_ready":@(self.snapshotReceived),@"native_running":@(AGNativeWatchRunning(self.variant)),
+        @"room0_request_sent":@(self.roomReturnSent),@"room0_request_attempts":@(self.roomReturnAttempts),
         @"end_received":@(self.endReceived),@"cleanup_pending":@(atomic_load(&nativeCleanup[self.variant])),
         @"watch_active":@(AGViewerActive(self.variant)),@"still_watching":@(AGViewerStillWatching(self.variant)),
         @"render_callbacks":@(render[0]),@"render_steps":@(render[1]),@"render_completed":@(render[2]),
@@ -491,7 +521,7 @@ void AGViewerTick(void *env,int variant) {
         @"scene_exceptions":@(trace.exceptions),@"first_exception":[NSString stringWithUTF8String:trace.exception]?:@""};
     NSData *data=[NSJSONSerialization dataWithJSONObject:report options:NSJSONWritingPrettyPrinted error:nil];
     NSString *directory=NSSearchPathForDirectoriesInDomains(NSDocumentDirectory,NSUserDomainMask,YES).firstObject;
-    if(data&&directory)[data writeToFile:[directory stringByAppendingPathComponent:@"Watch294-diagnostic.json"] atomically:YES];
+    if(data&&directory)[data writeToFile:[directory stringByAppendingPathComponent:@"Watch295-diagnostic.json"] atomically:YES];
 }
 - (void)close {
     [self.watchdog invalidate];self.watchdog=nil;
