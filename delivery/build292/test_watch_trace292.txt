@@ -1,0 +1,2 @@
+PASS compiled iPhone ARM64: six variants, snapshot-only presentation, map/HP/positions, independent destructible terrain, camera, nonblocking leave, lost-notify recovery and reopening
+PASS compiled watch trace: six PBs, packet/frame/wait metadata, JNI exception text, first-error retention and inactive-session filtering

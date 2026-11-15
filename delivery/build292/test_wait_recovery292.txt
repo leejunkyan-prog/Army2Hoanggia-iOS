@@ -1,0 +1,3 @@
+PASS compiled iPhone ARM64: six variants, snapshot-only presentation, map/HP/positions, independent destructible terrain, camera, nonblocking leave, lost-notify recovery and reopening
+PASS original Build290 ARM64 dispatcher: cmd21 movement scheduling; cmd22 full 46-point trajectory decoding, native Actor.fire and projectile initialization; cmd51 64-bit HP arguments. Animation wait and rendering are separate tests.
+PASS compiled spectator APK wait parity: all four flags, six PBs, 30s expiry, cancellation/identity safety; actual AOT movement completion releases compiled wait at 200 native updates before expiry
