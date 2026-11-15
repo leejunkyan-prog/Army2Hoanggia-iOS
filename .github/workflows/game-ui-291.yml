@@ -29,7 +29,7 @@ jobs:
         shell: bash
         run: |
           python3 -m venv native-wheel/build/device-qa
-          native-wheel/build/device-qa/bin/pip install --quiet lief unicorn
+          native-wheel/build/device-qa/bin/pip install --quiet lief unicorn capstone
           py=native-wheel/build/device-qa/bin/python
           bin=native-wheel/build/QA/AGWheel.framework/AGWheel
           status=0
