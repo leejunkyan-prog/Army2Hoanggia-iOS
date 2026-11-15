@@ -64,7 +64,7 @@ jobs:
           py=native-wheel/build/device-qa/bin/python
           bin=native-wheel/build/QA/AGWheel.framework/AGWheel
           status=0
-          for test in test_room_reply295 test_watch_exit294 test_native_watch test_inventory_device282 test_recipe_reentry286 test_snapshot_flash286 test_watch_room_transition287 test_watch_cold_start287 test_recipe_dialog289 test_snapshot_barrier289; do
+          for test in test_room_sender295 test_room_reply295 test_watch_exit294 test_native_watch test_inventory_device282 test_recipe_reentry286 test_snapshot_flash286 test_watch_room_transition287 test_watch_cold_start287 test_recipe_dialog289 test_snapshot_barrier289; do
             "$py" "native-wheel/$test.py" "$bin" > "native-wheel/build/$test.txt" 2>&1 || status=1
             cat "native-wheel/build/$test.txt"
           done

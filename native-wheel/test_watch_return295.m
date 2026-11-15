@@ -148,7 +148,7 @@ static void detached295(ArmyWatch *w,int v){
             AGViewerTick(env295,0);NSCAssert(roomRequests295()==0,@"Return retry spins every frame");
             pump295(1.05);AGViewerTick(env295,0);NSCAssert(roomRequests295()==1,@"Room refresh was lost after a transient send failure");
             NSCAssert(switches295==6&&board295==6,@"Alternative return destinations changed");
-            NSCAssert(self.window.isKeyWindow&&self.window.rootViewController.children.count==0,@"Root/window state was not restored");
+            NSCAssert(self.window.isKeyWindow&&self.window.rootViewController.childViewControllers.count==0,@"Root/window state was not restored");
             reason=@"Production receive/tick/close: six PBs, SP6/manual SP2 -> room0, cleanup ordering, duplicate protection, cancel/session/PB/battlefield safety, retry and native input/touch restoration";
         }@catch(NSException *error){passed=NO;reason=error.reason?:error.name;}
         NSDictionary *report=@{@"passed":@(passed),@"reason":reason};
