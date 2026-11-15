@@ -38,9 +38,6 @@ def read(fmt):
  value=struct.unpack_from(fmt,data,cursor)[0];reads.append((cursor,fmt,value));cursor+=n;t.ret(value)
 def halt():t.u.reg_write(UC_ARM64_REG_PC,t.STOP)
 def cas():t.put(t.reg(2),'<I',t.reg(1));t.ret(1)
-def unknown(pc):
- def fn():raise AssertionError(('unmocked native dependency',hex(pc)))
- return fn
 t.extraNative.update({
  t.MAIN+0x1300d54:lambda:t.ret(),t.MAIN+0x12e7330:lambda:t.ret(),
  t.MAIN+0x4f98cc:lambda:t.ret(input),t.MAIN+0xa63e54:lambda:read('>b'),
@@ -58,18 +55,15 @@ t.extraNative[t.MAIN+0x5177ec]=lambda:arr(8)
 t.extraNative[t.MAIN+0x12e7cc8]=lambda:arr(2)
 def aset():t.put(t.reg(1)+0x18+8*t.reg(2),'<Q',t.reg(3));t.ret()
 t.extraNative[t.MAIN+0x12e7f74]=aset
-for off in (0x512ff4,0x51301c,0x513044,0x51306c,0x583628):t.extraNative[t.MAIN+off]=lambda:t.ret(t.alloc(0x30))
+for off in (0x512ff4,0x51301c,0x513044,0x51306c):t.extraNative[t.MAIN+off]=lambda:t.ret(t.alloc(0x30))
 # Debug strings are resource work, not battle simulation.
 t.extraNative[t.MAIN+0x55566c]=lambda:t.ret(0)
 t.extraNative[t.MAIN+0xab9404]=lambda:t.ret(t.alloc(0x40))
 for off in (0xabc20c,0xabc3a4,0xabc3d0,0xab96d8):t.extraNative[t.MAIN+off]=lambda:t.ret(t.reg(1))
-# Execute real dispatcher only; unknown helper calls halt for bounded expansion.
-from capstone import *
-md=Cs(CS_ARCH_ARM64,CS_MODE_ARM)
-for ins in [i for start,end in ((0x518210,0x537000),(0x599ad0,0x59a2a0),(0x512e40,0x512ff4),(0x57ff10,0x57ff9c)) for i in md.disasm(raw[start:end],start)]:
- if ins.mnemonic=='bl':
-  dst=int(ins.op_str[1:],16)
-  if not any(start<=t.MAIN+dst<end for start,end in t.nativeRanges) and t.MAIN+dst not in t.extraNative:t.extraNative[t.MAIN+dst]=(lambda:t.ret(t.alloc(0x30))) if 0x537800<=dst<0x539000 else unknown(dst)
+# Exact debug-string getters reached by these commands; all other
+# unexpected native dependencies remain fatal in test_native_watch.hook.
+for off in (0x537ca0,0x537cc8,0x537cf0,0x5380d8,0x538100,0x538128):
+ t.extraNative[t.MAIN+off]=lambda:t.ret(t.alloc(0x30))
 def dispatch(cmd,p):
  global data,cursor,reads,calls
  data=p;cursor=0;reads=[];calls=[];t.put(message+0x30,'<b',cmd)
@@ -79,7 +73,6 @@ def dispatch(cmd,p):
  t.u.emu_start(t.MAIN+0x518210,t.STOP+4,count=1000000)
  assert t.u.reg_read(UC_ARM64_REG_PC)==t.STOP
  assert cursor==len(data),(cmd,cursor,len(data))
-t.extraNative.pop(t.MAIN+0x599ad0,None)
 playerglobals=t.alloc(0x200);t.put(t.MAIN+0x2091b80,'<Q',playerglobals)
 projectileObject=t.alloc(0x100);t.put(projectileObject+0x30,'<Q',t.alloc(0x30));t.extraNative[t.MAIN+0x1dfce8]=lambda:t.ret(0);t.put(a+0xe0,'<Q',projectileObject)
 t.extraNative[t.MAIN+0x53ed88]=lambda:t.ret(projectileObject)
@@ -89,7 +82,7 @@ t.extraNative[t.MAIN+0x12e76d8]=lambda:t.ret()
 t.extraNative[t.MAIN+0x24ffe08]=lambda:t.ret()
 projectiles=t.alloc(0x200);t.put(projectiles+0xc0,'<Q',t.alloc(0x30));t.put(t.MAIN+0x208c790,'<Q',projectiles)
 for start,end in ((0x57f978,0x57f9b8),):
- t.nativeRanges.append((t.MAIN+start,t.MAIN+end));t.extraNative.pop(t.MAIN+start,None)
+ t.nativeRanges.append((t.MAIN+start,t.MAIN+end))
 t.extraNative[t.MAIN+0xaaa258]=lambda:t.ret()
 t.extraNative[t.MAIN+0xbe3f1c]=lambda:t.ret(t.alloc(0x30))
 t.extraNative[t.MAIN+0xbe6b7c]=lambda:t.ret()
