@@ -103,7 +103,8 @@ __attribute__((visibility("default"))) void AGBattleAwait(void *env,void *lock,i
     if(!watching){AGShipTraceWait(v,kind,actor,1);AGShipTraceTick(env,v,2);}
     // A fast B52 can finish and notify before the controller acquires its
     // monitor. Recheck the real completion flag before waiting, and after
-    // each wake. No timer clears flags or forces the next player's turn.
+    // each wake. Spectators additionally retain the APK's bounded recovery;
+    // non-spectator battles keep their existing completion-based handling.
     while((!watching||AGViewerStillWatching(v))&&busy(&c,kind,actor)){
         /* Match the supplied APK's Wait106: a stalled animation cannot
            block the spectator receive stream indefinitely. Expiry clears
