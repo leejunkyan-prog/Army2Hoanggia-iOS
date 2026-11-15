@@ -539,7 +539,7 @@ void AGViewerTick(void *env,int variant){
     self.traceSavedAt=now();
     AGWatchTrace trace;if(!AGNativeWatchTraceCopy(self.variant,&trace))return;
     uint64_t render[5]={0};AGNativeWatchTraceRenderCopy(self.variant,render);
-    NSDictionary *report=@{@"build":@297,@"pb":@(self.variant+1),@"phase":@(self.phase),
+    NSDictionary *report=@{@"build":@(AG_RETURN_BUILD),@"pb":@(self.variant+1),@"phase":@(self.phase),
         @"snapshot_ready":@(self.snapshotReceived),@"native_running":@(AGNativeWatchRunning(self.variant)),
         @"room0_request_sent":@(self.roomReturnSent),@"room0_request_attempts":@(self.roomReturnAttempts),
         @"room0_reply_received":@(self.roomReplyReceived),@"room0_reply_rows":@(self.roomReplyRows),
@@ -556,7 +556,7 @@ void AGViewerTick(void *env,int variant){
         @"scene_exceptions":@(trace.exceptions),@"first_exception":[NSString stringWithUTF8String:trace.exception]?:@""};
     NSData *data=[NSJSONSerialization dataWithJSONObject:report options:NSJSONWritingPrettyPrinted error:nil];
     NSString *directory=NSSearchPathForDirectoriesInDomains(NSDocumentDirectory,NSUserDomainMask,YES).firstObject;
-    if(data&&directory)[data writeToFile:[directory stringByAppendingPathComponent:@"Watch297-watch.json"] atomically:YES];
+    if(data&&directory)[data writeToFile:[directory stringByAppendingPathComponent:[NSString stringWithFormat:@"Watch%d-watch.json",AG_RETURN_BUILD]] atomically:YES];
 }
 - (void)close {
     [self.watchdog invalidate];self.watchdog=nil;

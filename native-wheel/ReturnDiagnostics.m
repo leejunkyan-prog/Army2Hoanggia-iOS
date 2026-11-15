@@ -4,6 +4,7 @@
 #include <stdatomic.h>
 #include <time.h>
 #include "ReturnDiagnostics.h"
+#include "ThreadDiagnostics.h"
 #ifdef AG_RETURN_DIAGNOSTIC
 static struct {
     atomic_uint_fast64_t gameTicks,renderTicks,inputEvents,blockedInputs;
@@ -13,6 +14,7 @@ static struct {
 static uint64_t millis(void){struct timespec t;clock_gettime(CLOCK_MONOTONIC,&t);return (uint64_t)t.tv_sec*1000+t.tv_nsec/1000000;}
 void AGReturnPulse(int v,int source){
     if(v<0||v>=6)return;
+    AGThreadPulse(v,source);
     if(source==0){atomic_fetch_add(&returns[v].gameTicks,1);atomic_store(&returns[v].gameAt,millis());}
     else {atomic_fetch_add(&returns[v].renderTicks,1);atomic_store(&returns[v].renderAt,millis());}
 }
@@ -83,7 +85,7 @@ static void saveSnapshot(void){
     for(NSDictionary *pb in pbs)if([pb[@"game_ticks"] unsignedLongLongValue]||[pb[@"render_ticks"] unsignedLongLongValue]||[pb[@"input_events"] unsignedLongLongValue])[active addObject:pb];
     [history addObject:@{@"at":stamp(),@"uptime_ms":@(at),@"pbs":active}];
     while(history.count>180)[history removeObjectAtIndex:0];
-    NSData *watchData=[NSData dataWithContentsOfFile:[directory() stringByAppendingPathComponent:@"Watch297-watch.json"]];
+    NSData *watchData=[NSData dataWithContentsOfFile:[directory() stringByAppendingPathComponent:[NSString stringWithFormat:@"Watch%d-watch.json",AG_RETURN_BUILD]]];
     id watch=watchData?[NSJSONSerialization JSONObjectWithData:watchData options:0 error:nil]:nil;
     NSMutableArray *windows=[NSMutableArray array];
     for(UIWindow *window in UIApplication.sharedApplication.windows){
@@ -93,15 +95,22 @@ static void saveSnapshot(void){
         [windows addObject:@{@"class":NSStringFromClass(window.class),@"key":@(window.isKeyWindow),@"level":@(window.windowLevel),
             @"root":window.rootViewController?NSStringFromClass(window.rootViewController.class):@"none",@"children":children}];
     }
-    NSDictionary *report=@{@"build":@297,@"diagnostic_revision":@"297-native-return-state-1",@"created_at":stamp(),
+    NSDictionary *report=@{@"build":@(AG_RETURN_BUILD),@"diagnostic_revision":[NSString stringWithFormat:@"%d-native-return-state-1",AG_RETURN_BUILD],@"created_at":stamp(),
         @"session_started_at":session,@"app_build":NSBundle.mainBundle.infoDictionary[@"CFBundleVersion"]?:@"unknown",
         @"screen_kind_legend":@{@"0":@"unknown",@"1":@"area",@"2":@"arena",@"3":@"room",@"4":@"other"},
         @"input_blocker_legend":@{@"0":@"passed_to_game",@"1":@"watch",@"2":@"battlefield_lobby",@"3":@"notes_or_wheel",
             @"-1":@"inside_watch_guard",@"-2":@"inside_lobby_guard",@"-3":@"inside_notes_guard",@"-4":@"inside_wheel_guard"},
         @"latest_watch":watch?:@{},@"visible_windows":windows,@"latest":pbs,@"history":[history copy]};
-    NSData *data=[NSJSONSerialization dataWithJSONObject:report options:NSJSONWritingPrettyPrinted error:nil];
-    NSString *path=[directory() stringByAppendingPathComponent:@"Watch297-diagnostic.json"];
-    if(data&&path)dispatch_async(logQueue(),^{[data writeToFile:path atomically:YES];});
+    NSString *path=[directory() stringByAppendingPathComponent:[NSString stringWithFormat:@"Watch%d-diagnostic.json",AG_RETURN_BUILD]];
+    if(path)dispatch_async(logQueue(),^{
+        NSMutableDictionary *complete=[report mutableCopy];
+#ifdef AG_RETURN_THREAD_DIAGNOSTIC
+        complete[@"thread_samples"]=AGThreadDiagnosticsSample();
+        complete[@"thread_sampling"] = @"this_process_only; no thread suspension; image-relative code locations; waiting=3, running=1";
+#endif
+        NSData *data=[NSJSONSerialization dataWithJSONObject:complete options:NSJSONWritingPrettyPrinted error:nil];
+        if(data)[data writeToFile:path atomically:YES];
+    });
 }
 void AGReturnDiagnosticSave(void){saveSnapshot();dispatch_sync(logQueue(),^{});}
 __attribute__((constructor)) static void installReturnDiagnostics(void){

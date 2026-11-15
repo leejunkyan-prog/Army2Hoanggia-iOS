@@ -86,6 +86,8 @@ def hook(uc,pc,size,_):
         name=imports[pc]
         if name=='__dyld_get_image_header':ret(MAIN)
         elif name=='_clock_gettime':put(reg(1),'<qq',int(now),round((now-int(now))*1000000000));ret()
+        elif name=='_mach_thread_self':ret(42)
+        elif name=='_mach_port_deallocate':ret()
         elif name in ('_pthread_mutex_lock','_pthread_mutex_trylock'):
             if name=='_pthread_mutex_trylock' and busy:ret(16)
             else:lock+=1;assert lock==1;ret()
