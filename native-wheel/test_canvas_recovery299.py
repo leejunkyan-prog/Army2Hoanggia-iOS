@@ -28,7 +28,7 @@ def boundary(uc,pc,size,data):t.ret()
 for name in ('_AGViewerTick','_AGTurnPulse'):
     t.u.hook_add(UC_HOOK_CODE,boundary,begin=t.symbols[name],end=t.symbols[name])
 def string(at):return bytes(t.u.mem_read(at,100)).split(b'\0')[0].decode()
-thread_class=t.alloc(0x100);threads={};started=[];fail_start=False
+thread_class=t.alloc(0x100);threads={};started=[];fail_start=False;exception_pending=False
 tracking=0;original_java_thread=t.alloc(0x80)
 def find_class():assert string(t.reg(1))=='java/lang/Thread';t.ret(thread_class)
 def method():
@@ -40,14 +40,18 @@ def construct():
     original=t.get(t.reg(3),'<Q');variant=next(v for v,entry in enumerate(fixtures) if original==entry['runnable'])
     obj=t.alloc(0x80);threads[obj]={'v':variant,'target':original,'alive':False};t.ret(obj)
 def start():
+    global exception_pending
     assert t.reg(2)==2 and t.reg(3)==0
-    obj=t.reg(1);threads[obj]['alive']=not fail_start;started.append(obj);t.ret()
+    obj=t.reg(1);threads[obj]['alive']=not fail_start;started.append(obj);exception_pending=fail_start;t.ret()
 def get_class():assert t.reg(1) in threads;t.ret(thread_class)
 def alive():assert t.reg(2)==3;t.ret(threads[t.reg(1)]['alive'])
 def static_method():assert string(t.reg(2))=='currentThread' and string(t.reg(3))=='()Ljava/lang/Thread;';t.ret(4)
 def field():assert string(t.reg(2))=='target' and string(t.reg(3))=='Ljava/lang/Runnable;';t.ret(5)
 def get_target():assert t.reg(1)==original_java_thread and t.reg(2)==5;t.ret(fixtures[tracking]['runnable'])
-for i,(slot,handler) in enumerate([(6,find_class),(33,method),(30,construct),(63,start),(31,get_class),(39,alive),(228,lambda:t.ret(0)),(17,lambda:t.ret()),(113,static_method),(116,lambda:t.ret(original_java_thread)),(94,field),(95,get_target)]):
+def clear_exception():
+    global exception_pending
+    exception_pending=False;t.ret()
+for i,(slot,handler) in enumerate([(6,find_class),(33,method),(30,construct),(63,start),(31,get_class),(39,alive),(228,lambda:t.ret(exception_pending)),(17,clear_exception),(113,static_method),(116,lambda:t.ret(original_java_thread)),(94,field),(95,get_target)]):
     pc=t.FAKE+0x36000+i*0x100;t.put(t.JNI+slot*8,'<Q',pc);t.extraNative[pc]=handler
 t.extraNative[t.MAIN+0x1dfce8]=lambda:t.ret(t.get(t.reg(1)+0x24,'<i'))
 fixtures=[]

@@ -75,6 +75,13 @@ static void start(void *e,JavaThread *thread,void *method,const void *arguments)
 static void *getClass(void *e,void *thread){locals++;return &jni;}
 static int isAlive(void *e,JavaThread *thread,void *method,const void *arguments){return thread->running;}
 static AGCanvasRecovery state(void){AGCanvasRecovery s={0};AGCanvasRecoveryCopy(0,&s);return s;}
+static int kernelExit(void){
+    /* pthread_join can complete just before the kernel tears down the Mach
+       thread. Production waits for later render callbacks; allow that same
+       teardown interval instead of assuming join implies a dead port. */
+    for(int i=0;i<300&&!AGThreadGameExited(0);i++)usleep(1000);
+    return AGThreadGameExited(0);
+}
 static NSString *documents(void){return NSSearchPathForDirectoriesInDomains(NSDocumentDirectory,NSUserDomainMask,YES).firstObject;}
 static void finish(BOOL passed,NSString *reason){
     atomic_store(&stop,1);
@@ -106,7 +113,7 @@ static void finish(BOOL passed,NSString *reason){
             AGCanvasRecoveryFrame(env,0,1);
             pthread_mutex_lock(&conditionLock);atomic_store(&leaveOld,1);pthread_cond_signal(&condition);pthread_mutex_unlock(&conditionLock);
             pthread_join(oldWorker,NULL);
-            NSCAssert(AGThreadGameExited(0),@"Exited pthread did not produce a dead retained Mach right");
+            NSCAssert(kernelExit(),@"Exited pthread did not produce a dead retained Mach right");
             AGCanvasRecoveryFrame(env,0,1);NSCAssert(starts==0,@"Canvas restarted inside an active watch");
             pointer(canvases[0]+0xb8,battleScreen);AGCanvasRecoveryFrame(env,0,0);NSCAssert(starts==0,@"Canvas restarted before native arena cleanup");
             pointer(canvases[0]+0xb8,screens[0]);rows=0;AGCanvasRecoveryFrame(env,0,0);NSCAssert(starts==0,@"Canvas restarted before area rows were installed");

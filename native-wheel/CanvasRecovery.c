@@ -38,7 +38,7 @@ static void localDelete(void *e,void *p){if(p)((void (*)(void *,void *))(*(void 
 static void globalDelete(void *e,void *p){if(p)((void (*)(void *,void *))(*(void ***)e)[22])(e,p);}
 static int pendingException(void *e){
     void **jni=*(void ***)e;
-    if(!((int (*)(void *))jni[228])(e))return 0;
+    if(!((uint8_t (*)(void *))jni[228])(e))return 0;
     ((void (*)(void *))jni[17])(e);return 1;
 }
 typedef struct {int v,alive;void *clazz,*localThread,*thread;} ThreadJob;
@@ -87,7 +87,7 @@ static int aliveThread(void *e,void *opaque){
     if(pendingException(e)||!j->clazz)return -1;
     void *method=((void *(*)(void *,void *,const char *,const char *))jni[33])(e,j->clazz,"isAlive","()Z");
     if(pendingException(e)||!method)return -1;
-    int alive=((int (*)(void *,void *,void *,const void *))jni[39])(e,j->thread,method,NULL);
+    int alive=((uint8_t (*)(void *,void *,void *,const void *))jni[39])(e,j->thread,method,NULL);
     if(pendingException(e))return -1;
     j->alive=alive!=0;return 1;
 }
