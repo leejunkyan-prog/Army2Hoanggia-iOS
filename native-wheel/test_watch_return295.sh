@@ -34,17 +34,22 @@ assert phones
 print(next((d for d in phones if d['state']=='Booted'),phones[0])['udid'])
 PY
 )"
-if ! xcrun simctl list devices booted | rg -q "$device"; then xcrun simctl boot "$device"; fi
+if ! xcrun simctl list devices booted | grep -q "$device"; then xcrun simctl boot "$device"; fi
 xcrun simctl bootstatus "$device" -b
 bundle="vn.army2hoanggia.return295test.$mode"
 xcrun simctl install "$device" "$app"
 container="$(xcrun simctl get_app_container "$device" "$bundle" data)"
 rm -f "$container/Documents/return295-result.json"
 xcrun simctl launch --terminate-running-process "$device" "$bundle"
-for attempt in $(seq 1 60); do
+for attempt in $(seq 1 180); do
  if [ -f "$container/Documents/return295-result.json" ]; then break; fi
  sleep 1
 done
+if [ ! -f "$container/Documents/return295-result.json" ]; then
+ xcrun simctl spawn "$device" log show --last 3m --style compact --predicate 'process == "WatchReturn295"' > "build/return295-$mode-timeout.txt" 2>&1 || true
+ tail -80 "build/return295-$mode-timeout.txt"
+ exit 1
+fi
 cp "$container/Documents/return295-result.json" "build/return295-$mode-result.json"
 python3 - "$mode" <<'PY'
 import json,sys

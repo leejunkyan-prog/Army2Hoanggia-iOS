@@ -28,7 +28,7 @@ assert phones,'An iPhone simulator is required'
 print(next((d for d in phones if d['state']=='Booted'),phones[0])['udid'])
 PY
 )"
-if ! xcrun simctl list devices booted | rg -q "$device"; then xcrun simctl boot "$device"; fi
+if ! xcrun simctl list devices booted | grep -q "$device"; then xcrun simctl boot "$device"; fi
 xcrun simctl bootstatus "$device" -b
 xcrun simctl install "$device" "$app"
 xcrun simctl launch --terminate-running-process "$device" vn.army2hoanggia.overlay293test
@@ -43,3 +43,4 @@ import json
 r=json.load(open('build/overlay293-result.json'));print(json.dumps(r,indent=2))
 assert r['passed'],r
 PY
+

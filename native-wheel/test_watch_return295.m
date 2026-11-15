@@ -49,9 +49,10 @@ int AGNativeWatchTraceRenderCopy(int v,uint64_t o[5]){memset(o,0,40);return 1;}
 
 static void pump295(double seconds){
     NSTimeInterval until=NSProcessInfo.processInfo.systemUptime+seconds;
-    do{[[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:.01]];}
+    do{[NSThread sleepForTimeInterval:.01];}
     while(NSProcessInfo.processInfo.systemUptime<until);
 }
+static void ui295(dispatch_block_t block){dispatch_sync(dispatch_get_main_queue(),block);}
 static int receive295(int v,int command,NSData *body){
     NSMutableData *array=[NSMutableData dataWithLength:0x14+body.length];
     *(int *)((uint8_t *)array.mutableBytes+0x10)=(int)body.length;
@@ -68,12 +69,13 @@ static NSData *end295(ArmyWatch *w){
 static ArmyWatch *offer295(int v){
     uint8_t p[17]={0x53,0x50,1,0,0,3,1,2,3,4,5,6,7,8,0,1,'?'};
     NSCAssert(receive295(v,-102,[NSData dataWithBytes:p length:sizeof p])==1,@"Offer not consumed");
-    pump295(.02);ArmyWatch *w=current;
-    NSCAssert(w&&w.phase==Offered&&w.parentViewController,@"Real overlay did not mount");
+    __block ArmyWatch *w;__block BOOL mounted;
+    ui295(^{w=current;mounted=w&&w.parentViewController&&w.view.superview;});
+    NSCAssert(w&&w.phase==Offered&&mounted,@"Real overlay did not mount");
     return w;
 }
 static ArmyWatch *start295(int v){
-    ArmyWatch *w=offer295(v);[w accept];AGViewerTick(env295,v);
+    ArmyWatch *w=offer295(v);ui295(^{[w accept];});AGViewerTick(env295,v);
     uint8_t p[21]={0x53,0x50,1,3,0,3};memcpy(p+6,w.ticket.bytes,8);
     p[15]=3;p[16]=0xe8;p[17]=3;p[18]=0x20;
     receive295(v,-102,[NSData dataWithBytes:p length:21]);
@@ -95,7 +97,8 @@ static NSUInteger roomRequests295(void){
 }
 static void detached295(ArmyWatch *w,int v){
     pump295(.04);
-    NSCAssert(!w.parentViewController&&!w.view.superview,@"Closed watch still intercepts native touches");
+    __block BOOL removed;ui295(^{removed=!w.parentViewController&&!w.view.superview;});
+    NSCAssert(removed,@"Closed watch still intercepts native touches");
     NSCAssert(!AGViewerActive(v)&&!AGViewerStillWatching(v)&&!AGNativeWatchRunning(v),@"Watch flags still block normal play");
     NSCAssert(AGViewerInput(v,0,-6)==0&&AGViewerInput(v,1,-6)==0&&AGViewerInput(v,1,'4')==0&&AGViewerInput(v,2,0)==0,@"Room keys/touches are still consumed");
     NSCAssert(keypad295==0,@"Watch still owns native keypad");
@@ -108,12 +111,14 @@ static void detached295(ArmyWatch *w,int v){
 - (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)options {
     self.window=[[UIWindow alloc]initWithFrame:UIScreen.mainScreen.bounds];
     self.window.rootViewController=[UIViewController new];[self.window makeKeyAndVisible];
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW,NSEC_PER_SEC),dispatch_get_main_queue(),^{
+    // Keep the main queue free to execute production's asynchronous show/close.
+    // Receive and native ticks normally run off the main queue in the real game.
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW,NSEC_PER_SEC),dispatch_get_global_queue(QOS_CLASS_USER_INITIATED,0),^{
         BOOL passed=YES;NSString *reason=@"";sent295=[NSMutableArray array];
         @try{
             for(int v=0;v<6;v++){
                 // Manual leave: cleanup must complete before SP2 then room0.
-                ArmyWatch *w=start295(v);AGViewerInput(v,0,'4');[w cancel];cleanupBlocked295=1;
+                ArmyWatch *w=start295(v);AGViewerInput(v,0,'4');ui295(^{[w cancel];});cleanupBlocked295=1;
                 AGViewerTick(env295,v);NSCAssert(sent295.count==0,@"Sent return before cleanup");
                 cleanupBlocked295=0;AGViewerTick(env295,v);
                 NSCAssert(sent295.count==2&&[sent295[0][@"cmd"] intValue]==-102&&roomRequests295()==1,@"Manual leave did not send SP2 then room0");
@@ -127,9 +132,9 @@ static void detached295(ArmyWatch *w,int v){
                 NSCAssert(roomRequests295()==1,@"Duplicate SP6 repeated room refresh");
 
                 // Offers declined before joining never rejoin a room.
-                [sent295 removeAllObjects];w=offer295(v);[w cancel];AGViewerTick(env295,v);detached295(w,v);
+                [sent295 removeAllObjects];w=offer295(v);ui295(^{[w cancel];});AGViewerTick(env295,v);detached295(w,v);
                 NSCAssert(sent295.count==0,@"Decline sent a room request");
-                w=offer295(v);[w accept];[w cancel];AGViewerTick(env295,v);detached295(w,v);
+                w=offer295(v);ui295(^{[w accept];[w cancel];});AGViewerTick(env295,v);detached295(w,v);
                 NSCAssert(sent295.count==0,@"Unsent accept caused a room request");
 
                 // No old-session room request may reach a replacement login.
@@ -137,7 +142,7 @@ static void detached295(ArmyWatch *w,int v){
                 NSCAssert(sent295.count==0,@"Old session returned a new login to room0");
 
                 // A PB switch and custom battlefield keep their own destination.
-                w=start295(v);w.switchToPB=(v+1)%6+1;[w cancel];AGViewerTick(env295,v);detached295(w,v);
+                w=start295(v);w.switchToPB=(v+1)%6+1;ui295(^{[w cancel];});AGViewerTick(env295,v);detached295(w,v);
                 NSCAssert(roomRequests295()==0,@"PB switch incorrectly joined old room");
                 AGViewerExpectBattlefield(v,session295);w=start295(v);receive295(v,-102,end295(w));AGViewerTick(env295,v);detached295(w,v);
                 NSCAssert(roomRequests295()==0,@"Battlefield return incorrectly joined room0");
@@ -148,7 +153,8 @@ static void detached295(ArmyWatch *w,int v){
             AGViewerTick(env295,0);NSCAssert(roomRequests295()==0,@"Return retry spins every frame");
             pump295(1.05);AGViewerTick(env295,0);NSCAssert(roomRequests295()==1,@"Room refresh was lost after a transient send failure");
             NSCAssert(switches295==6&&board295==6,@"Alternative return destinations changed");
-            NSCAssert(self.window.isKeyWindow&&self.window.rootViewController.childViewControllers.count==0,@"Root/window state was not restored");
+            __block BOOL rootRestored;ui295(^{rootRestored=self.window.isKeyWindow&&self.window.rootViewController.childViewControllers.count==0;});
+            NSCAssert(rootRestored,@"Root/window state was not restored");
             reason=@"Production receive/tick/close: six PBs, SP6/manual SP2 -> room0, cleanup ordering, duplicate protection, cancel/session/PB/battlefield safety, retry and native input/touch restoration";
         }@catch(NSException *error){passed=NO;reason=error.reason?:error.name;}
         NSDictionary *report=@{@"passed":@(passed),@"reason":reason};
