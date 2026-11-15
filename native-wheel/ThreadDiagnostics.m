@@ -2,7 +2,6 @@
    unwound with Java/JNI. Only image-relative code locations enter the log. */
 #import <Foundation/Foundation.h>
 #include <mach/mach.h>
-#include <mach/mach_vm.h>
 #include <mach/thread_info.h>
 #include <mach-o/dyld.h>
 #include <mach-o/loader.h>
@@ -67,8 +66,8 @@ static NSDictionary *sampleThread(mach_port_t port){
         [frames addObject:location(arm_thread_state64_get_lr(state))];
         uint64_t frame=clean(arm_thread_state64_get_fp(state));
         for(int i=0;i<46&&frame&&(frame&15)==0;i++){
-            uint64_t pair[2]={0};mach_vm_size_t copied=0;
-            kern_return_t read=mach_vm_read_overwrite(mach_task_self(),frame,sizeof pair,(mach_vm_address_t)pair,&copied);
+            uint64_t pair[2]={0};vm_size_t copied=0;
+            kern_return_t read=vm_read_overwrite(mach_task_self(),(vm_address_t)frame,sizeof pair,(vm_address_t)pair,&copied);
             if(read!=KERN_SUCCESS||copied!=sizeof pair)break;
             [frames addObject:location(pair[1])];
             uint64_t next=clean(pair[0]);
