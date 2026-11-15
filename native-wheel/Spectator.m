@@ -6,6 +6,7 @@
 #include "Spectator.h"
 #include "SpectatorNative.h"
 #include "WatchTrace.h"
+#include "ReturnDiagnostics.h"
 #import "WatchSurface.h"
 #include "Lobby.h"
 #import "GameViewport.h"
