@@ -139,7 +139,8 @@ void AGInventoryOrder(void *env,int v,uint8_t *canvas,uint8_t *screen,int active
     InventoryState *state=&inventories[v];
     if(!active){
         /* A recipe child is still the same chest session. */
-        if(state->open&&state->screen&&(uintptr_t)inventoryRoot(v,screen)==state->screen)return;
+        if(state->open&&state->screen&&(uintptr_t)screen!=state->screen&&
+           (uintptr_t)inventoryRoot(v,screen)==state->screen)return;
         if(!state->open||!env)return;
         unpin(env,state->display);
         free(state->previous);
