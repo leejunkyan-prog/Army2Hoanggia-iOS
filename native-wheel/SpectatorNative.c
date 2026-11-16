@@ -618,7 +618,9 @@ void AGNativeWatchRenderFrame(void *e,int v){
        Java routines from UIKit timers or reuse another thread's Env. */
     AGViewerTick(e,v);
 #if defined(AG_RETURN_BUILD) && AG_RETURN_BUILD >= 306
-    AGCostumeRender(e,v);
+    /* A scene update may reenter paint. Leave its live projectile collection
+       alone until the outer update completes, as with the physics clock. */
+    if(!atomic_load(&renderStepping[v]))AGCostumeRender(e,v);
 #endif
     AGCanvasRecoveryFrame(e,v,AGViewerStillWatching(v)||AGNativeWatchRunning(v));
     if(!AGViewerStillWatching(v)||!AGNativeWatchRunning(v))return;
