@@ -170,8 +170,8 @@ static void battlefield296(UIWindow *host){
             AGLobbyTick(env295,v,session295);
             NSDictionary *png;
             for(int i=0;i<100&&!png;i++){id value=js296(panel.web,@"window.png304");if([value isKindOfClass:NSDictionary.class])png=value;else pump295(.01);}
-            NSCAssert([png[@"pixels"] isEqual:@[@80,@180,@255,@255]],@"Native RGBA -> UIImage PNG -> WKWebView changed or lost icon pixels");
-            NSCAssert([png[@"ids"] count]==6&&[png[@"status"] isEqual:@[@0,@0,@0,@0,@0,@0]]&&[png[@"hero"] intValue]==6,@"Native icon reply lost physical slot/PB identity");
+            NSCAssert(([png[@"pixels"] isEqual:@[@80,@180,@255,@255]]),@"Native RGBA -> UIImage PNG -> WKWebView changed or lost icon pixels");
+            NSCAssert(([png[@"ids"] count]==6&&[png[@"status"] isEqual:@[@0,@0,@0,@0,@0,@0]]&&[png[@"hero"] intValue]==6),@"Native icon reply lost physical slot/PB identity");
         }
         ui295(^{
             int samples=v==0&&!automatic?40:1;

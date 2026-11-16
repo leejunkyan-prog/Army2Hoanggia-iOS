@@ -36,7 +36,6 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
   framework:
-    needs: return-flow
     runs-on: macos-26
     timeout-minutes: 20
     steps:
