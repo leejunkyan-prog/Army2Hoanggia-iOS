@@ -19,7 +19,13 @@ three rank titles, tinted native body, animated flames and custom HP display.
 
 The new integration fixture runs the original font class initializer and
 glyph-width/glyph-paint routines, using the real IPA font textures. It checks
-several unrelated Vietnamese server announcements across six PBs. Existing
+several unrelated Vietnamese server announcements across six PBs. It also runs
+the original arena roster loop, production Aura shim, virtual dispatch and NPC
+body painter for all three ranks, with metadata values 0, 3 and 255 while the
+boss remains in roster slot8. It verifies the title/current-max HP glyphs,
+body tint, POW flames, suppressed default HP bar and restored graphics state.
+The previous Build309 binary fails both new appearance/identity checks.
+Existing
 protocol/pixel differential checks and native, Simulator and interface
 regressions are retained. Packaging reuses the audited Build309 native patch
 sites; the production changes are confined to the framework and build number.
