@@ -12,7 +12,7 @@ const png=fs.readFileSync(path.join(__dirname,'viewer/art/b.png'));
 const atlas=w().byte(1).byte(0).short(100).byte(1).byte(0).byte(3);
 for(const [id,frame] of [[54,211],[55,212],[56,213]]){
  atlas.short(id).byte(13).short(frame);
- for(let i=0;i<49;i++)atlas.byte(0);
+ for(let i=0;i<59;i++)atlas.byte(0);
 }
 atlas.short(png.length);for(const b of png)atlas.byte(b);
 assert.deepEqual([...readGearAtlas(Uint8Array.from(atlas.bytes)).frames],[['0:0:54',211],['0:0:55',212],['0:0:56',213]]);

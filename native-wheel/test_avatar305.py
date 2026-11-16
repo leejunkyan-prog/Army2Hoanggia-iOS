@@ -33,7 +33,7 @@ for hero in range(10):
  assert all(f'{hero}:{s}:{id}' not in art['gear'] for s,id in enumerate(ids))
  ref=Image.new('RGBA',(80,80));ew=30 if hero==3 else 29 if hero==6 else 32 if hero==7 else 24;eh=32 if hero in (3,7) else 24
  for s in (0,4,5,1,2,3):
-  if s==5:im=body;x=40-body.width//2;y=64-body.height
+  if s==5:im=body;x=40-body.width//2-(body.width&1);y=64-body.height
   else:
    sx,sy,w,h,ox,oy=rects[s];im=atlas.crop((sx,sy,sx+w,sy+h));x=40-ew//2+ox+18;y=64-eh+oy+40
   ref.alpha_composite(im,(x,y))

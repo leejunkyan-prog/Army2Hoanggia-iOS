@@ -102,7 +102,7 @@ assert.deepEqual(Profile.slots(sparse),[0,2,3,4]);assert.equal(Profile.move(spar
  await page.waitForFunction(()=>drawn.length>=4);
  assert.deepEqual(await page.evaluate(()=>[view,reply.id,reply.avatar.character,character]),['profile',41,9,0]);
  assert.deepEqual(await page.evaluate(()=>drawn.slice(-4).map(a=>[a[0],a[1],a[2],a[5]])),magentaIds.slice(0,4).map((id,i)=>[9,i,id,16]));
- const geometry=await page.evaluate(()=>frames.at(-1));assert.deepEqual(geometry.slice(0,2),[124,259]);
+ const geometry=await page.evaluate(()=>frames.at(-1));assert.deepEqual(geometry.slice(0,2),await page.evaluate(()=>[124,Math.floor((Math.round(PixelUI.height*432/320)-35-170)/2)]));
  assert.ok(Math.abs(geometry[2]-450/432)<1e-6,'Profile must use the same432-pixel grid as the outside screen: '+JSON.stringify(geometry));
  await page.waitForFunction(()=>PixelUI.serverGearIconMetadata(reply.avatar.character,0,reply.items[0].id,reply.icons[0]).kind===1);
  const iconPixel=()=>page.evaluate(()=>{const g=PixelUI.g;g.save();g.setTransform(1,0,0,1,0,0);g.clearRect(24,24,16,16);PixelUI.equipmentItem(reply.avatar.character,0,reply.items[0].id,32,32,16,reply.icons[0],true);const color=Array.from(g.getImageData(32,32,1,1).data);g.restore();return color;});
@@ -140,7 +140,7 @@ assert.deepEqual(Profile.slots(sparse),[0,2,3,4]);assert.equal(Profile.move(spar
  }
  // Exercise the live catalog path independently of per-profile PNGs.
  const strip=testPng([diamondColor,platinumColor]),catalog=w().byte(1).byte(9).short(999).byte(1).byte(0).byte(2);
- for(const [id,frame]of [[56,0],[43,1]]){catalog.short(id).byte(13).short(frame);for(let i=0;i<49;i++)catalog.byte(0);}
+ for(const [id,frame]of [[56,0],[43,1]]){catalog.short(id).byte(13).short(frame);for(let i=0;i<59;i++)catalog.byte(0);}
  catalog.short(strip.length);for(const b of strip)catalog.byte(b);
  await page.evaluate(b=>lobbyGearAtlas(b),encoded(catalog.bytes));
  await page.waitForFunction(()=>PixelUI.serverGearIconMetadata(9,0,56).kind===2);

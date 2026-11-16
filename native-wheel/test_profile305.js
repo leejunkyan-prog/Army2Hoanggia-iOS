@@ -30,9 +30,9 @@ const {chromium}=require('playwright');
   const samples=rows.map(row=>{g.clearRect(20,20,80,80);PixelUI.avatar(row,60,84,1);return Array.from(g.getImageData(20,20,80,80).data);});g.restore();
   // Same template ID for two characters must not share a gear icon cache key.
   function icon(color){x.clearRect(0,0,80,80);x.fillStyle=color;x.fillRect(0,0,80,80);return fixture.toDataURL().split(',')[1];}
-  PixelUI.setNativeProfileIcons(0,[56],[icon('#ff1234')]);PixelUI.setNativeProfileIcons(8,[56],[icon('#1456ff')]);
+  PixelUI.setNativeProfileIcons(0,[56],[icon('#ff1234')]);PixelUI.setNativeProfileIcons(1,[56],[icon('#1456ff')]);
   await new Promise(r=>setTimeout(r,100));g.save();g.setTransform(1,0,0,1,0,0);
-  const gear=[0,8].map(hero=>{g.clearRect(20,20,24,24);PixelUI.gearIcon(hero,0,56,32,32,16,null,true);return Array.from(g.getImageData(32,32,1,1).data);});g.restore();
+  const gear=[0,1].map(hero=>{g.clearRect(20,20,24,24);PixelUI.gearIcon(hero,0,56,32,32,16,null,true);return Array.from(g.getImageData(32,32,1,1).data);});g.restore();
   return {requests,before,samples,pixels,gear};
  });
  assert.equal(result.requests.length,10);assert.equal(result.before,false);

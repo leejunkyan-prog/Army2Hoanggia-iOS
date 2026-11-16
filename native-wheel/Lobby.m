@@ -71,7 +71,7 @@ static id AGProfileNumber(id value,int depth){
 static void AGSaveProfileDiagnostic(AGLobby *panel,NSDictionary *input){
     if(panel.tab!=AGLobbyField||panel.closing)return;
     NSMutableDictionary *fields=[NSMutableDictionary dictionary];
-    for(NSString *key in @[@"requested_id",@"rank",@"serial",@"hero",@"visual_ids",@"level",@"abilities",@"item_ids",@"upgrades",@"tiers",
+    for(NSString *key in @[@"requested_id",@"rank",@"serial",@"hero",@"visual_ids",@"visual_icon_sources",@"native_visual_status",@"level",@"abilities",@"item_ids",@"upgrades",@"tiers",
         @"has_details",@"flat",@"percent",@"gem_counts",@"icon_bytes",@"icon_sources",@"catalog_frames",@"atlas_width",@"atlas_height",@"native_icon_ids",@"native_icon_status",@"native_avatar_status"]){
         id n=AGProfileNumber(input[key],0);if(n)fields[key]=n;
     }
@@ -199,6 +199,16 @@ static void AGLoadProfileIcons(void *env,AGLobby *panel,NSDictionary *request){
         [png addObject:AGProfileIconPNG(&image)];[statuses addObject:@(image.status)];[icons addObject:@(image.iconID)];free(image.rgba);
     }
     NSMutableDictionary *reply=[request mutableCopy];reply[@"png"]=png;reply[@"status"]=statuses;reply[@"icon_ids"]=icons;
+    NSArray *visual=request[@"visual_ids"];
+    if(visual.count==5){
+        NSMutableArray *pictures=[NSMutableArray array],*states=[NSMutableArray array];
+        for(int slot=0;slot<5;slot++){
+            AGProfileIcon image={.status=1,.iconID=-1};
+            if([visual[slot] intValue]>=0)AGProfileIconRead(env,panel.variant,hero,slot,[visual[slot] intValue],&image);
+            [pictures addObject:AGProfileIconPNG(&image)];[states addObject:@(image.status)];free(image.rgba);
+        }
+        reply[@"visual_png"]=pictures;reply[@"visual_status"]=states;
+    }
     NSData *data=[NSJSONSerialization dataWithJSONObject:reply options:0 error:nil];if(!data)return;
     NSString *script=[NSString stringWithFormat:@"lobbyNativeProfileIcons(%@)",[[NSString alloc]initWithData:data encoding:NSUTF8StringEncoding]];
     dispatch_async(dispatch_get_main_queue(),^{if(activePanel==panel&&!panel.closing&&!panel.watching)[panel.web evaluateJavaScript:script completionHandler:nil];});
@@ -206,6 +216,19 @@ static void AGLoadProfileIcons(void *env,AGLobby *panel,NSDictionary *request){
 static void AGLoadAvatar(void *env,AGLobby *panel,NSDictionary *request){
     if(!request)return;int parts[5];for(int i=0;i<5;i++)parts[i]=[request[@"parts"][i] intValue];
     AGProfileIcon image={.status=6,.iconID=-1};AGProfileAvatarRead(env,panel.variant,[request[@"hero"] intValue],parts,&image);
+    if(image.rgba){
+        uint8_t *sheet=calloc(240*80,4);
+        if(sheet){
+            for(int frame=0;frame<3;frame++){
+                AGProfileIcon pose={.status=6,.iconID=-1};
+                if(frame)AGProfileAvatarPoseRead(env,panel.variant,[request[@"hero"] intValue],parts,frame==1?4:5,0,&pose);
+                const uint8_t *pixels=pose.rgba?:image.rgba;
+                for(int y=0;y<80;y++)memcpy(sheet+(y*240+frame*80)*4,pixels+y*80*4,80*4);
+                free(pose.rgba);
+            }
+            free(image.rgba);image.rgba=sheet;image.width=240;image.height=80;
+        }
+    }
     NSMutableDictionary *reply=[request mutableCopy];reply[@"png"]=AGProfileIconPNG(&image);reply[@"status"]=@(image.status);free(image.rgba);
     NSData *bytes=[NSJSONSerialization dataWithJSONObject:reply options:0 error:nil];if(!bytes)return;
     NSString *script=[NSString stringWithFormat:@"lobbyNativeAvatar(%@)",[[NSString alloc]initWithData:bytes encoding:NSUTF8StringEncoding]];
@@ -452,7 +475,10 @@ int AGLobbyReceive(void *env,void *message,int v){
         NSDictionary *input=args[1];id hero=AGProfileNumber(input[@"hero"],0),account=AGProfileNumber(input[@"requested_id"],0),serial=AGProfileNumber(input[@"serial"],0),ids=AGProfileNumber(input[@"ids"],0);
         if(!hero||[hero intValue]<0||[hero intValue]>9||!account||[account intValue]<1||!serial||[serial intValue]<1||![ids isKindOfClass:NSArray.class]||[ids count]!=6)return;
         for(id item in ids)if(![item isKindOfClass:NSNumber.class]||[item intValue]<-1||[item intValue]>32767)return;
-        @synchronized(AGLobby.class){self.profileIconRequest=@{@"hero":hero,@"requested_id":account,@"serial":serial,@"ids":ids};}return;
+        id visual=AGProfileNumber(input[@"visual_ids"],0);
+        if(visual){if(![visual isKindOfClass:NSArray.class]||[visual count]!=5)return;for(id item in visual)if([item intValue]<-1||[item intValue]>32767)return;}
+        NSMutableDictionary *request=[@{@"hero":hero,@"requested_id":account,@"serial":serial,@"ids":ids} mutableCopy];if(visual)request[@"visual_ids"]=visual;
+        @synchronized(AGLobby.class){self.profileIconRequest=request;}return;
     }
     if(args.count==2&&[args[0] isEqual:@"avatar"]&&[args[1] isKindOfClass:NSDictionary.class]){
         if(activePanel!=self||self.watching||self.closing)return;

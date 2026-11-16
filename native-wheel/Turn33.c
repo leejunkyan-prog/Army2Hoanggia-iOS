@@ -237,6 +237,7 @@ static int dispatch(void *env,void *opaque){
     if(c->playerGlobals){c->playerGlobals[0x1a7]=1;c->playerGlobals[0x1a8]=1;}return 1;
 }
 void AGTurnTick(void *env,int v){
+    extern void AGCostumeTick(void *,int);AGCostumeTick(env,v);
     if(!env||v<0||v>=6)return;
     pthread_mutex_lock(&autoMutex);AGUfoDiagnostic *dg=&diagnostics[v];dg->ticks++;dg->tickTime=now();pthread_mutex_unlock(&autoMutex);
     applyNativeTurn(env,v);
@@ -291,3 +292,4 @@ __attribute__((visibility("default"))) void AGTurnAwait(void *env,void *lock,int
     }
     pthread_mutex_lock(&autoMutex);dg->waitActive=0;pthread_mutex_unlock(&autoMutex);
 }
+

@@ -32,7 +32,7 @@ function readGearAtlas(bytes){
             const slot=r.u8(),n=r.u8();
             for(let k=0;k<n;k++){
                 const id=r.i16();if(slot===0)r.take(1);
-                const frame=r.u16();r.take(49);
+                const frame=r.u16();r.take(59);
                 frames.set(hero+':'+slot+':'+id,frame);
             }
         }
@@ -81,12 +81,14 @@ class ArmyBattlefield {
         }
         if(op===1){
             const rank=r.i32(),id=r.i32(),n=r.u8(),board=[];
+            this.self=null;
             for(let i=0;i<n;i++)board.push({rank:r.i32(),id:r.i32(),name:r.utf(),level:r.i32()});
             for(const row of board)Object.assign(row,rankedLook(r));
             if(r.pos<bytes.length){
                 if(r.i32()!==1397050438)throw Error('Phần mở rộng bảng hạng');
                 this.self={rank:r.i32(),id:r.i32(),name:r.utf(),level:r.i32(),...rankedLook(r)};
             }
+            if(!this.self)this.self=board.find(row=>row.id===id)||null;
             r.end();this.board=board;return {type:'board',rank,id,board};
         }
         if(op===2){

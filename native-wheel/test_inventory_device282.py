@@ -82,6 +82,8 @@ def hook(_,pc,size,data):
  elif name=='_qsort':
   ptr,n,sz,cmp=[reg(i)for i in range(4)];assert sz==40
   rows=[bytes(u.mem_read(ptr+i*sz,sz))for i in range(n)];rows.sort(key=lambda raw:row_sort_key(raw,cmp));u.mem_write(ptr,b''.join(rows));ret()
+ elif name=='_memcmp':
+  a,b=bytes(u.mem_read(reg(0),reg(2))),bytes(u.mem_read(reg(1),reg(2)));ret((a>b)-(a<b))
  elif name=='_bsearch':
   wanted=get(reg(0),'<Q');ptr,n,sz=reg(1),reg(2),reg(3);ret(next((ptr+i*sz for i in range(n)if get(ptr+i*sz,'<Q')==wanted),0))
  else:raise AssertionError(('unexpected import',name))
@@ -89,7 +91,7 @@ u.hook_add(UC_HOOK_CODE,hook)
 def call(name,*args):
  u.reg_write(UC_ARM64_REG_SP,S+0x30000);u.reg_write(UC_ARM64_REG_LR,STOP)
  for i,v in enumerate(args):u.reg_write(regs[i],v)
- u.emu_start(symbols[name],STOP+4,count=1000000)
+ u.emu_start(symbols[name],STOP+4,count=globals().get('instruction_limit',1000000))
  assert u.reg_read(UC_ARM64_REG_PC)==STOP and locks==0
  return reg(0)
 def item(id,quantity=1,equipment=False):

@@ -2,6 +2,7 @@
 #include "BossNative.h"
 #include "AuraState.h"
 #include "Spectator.h"
+#include "CostumeEffects.h"
 #include <mach-o/dyld.h>
 #include <math.h>
 #include <pthread.h>
@@ -84,6 +85,7 @@ int AGAuraPaintFrame(void) {
 
 typedef void (*Painter)(void *,void *,void *);
 __attribute__((visibility("default"))) void AGAuraPaintActor(void *env,uint8_t *actor,uint8_t *graphics,int v,Painter nativePaint) {
+    AGCostumePaint(env,actor,v);
     if(AGBossPaintActor(env,actor,graphics,v))return;
     const uint32_t id=*(uint32_t *)(actor+0x7c);
     const unsigned hero=actor[0x16c];
@@ -97,3 +99,4 @@ __attribute__((visibility("default"))) void AGAuraPaintActor(void *env,uint8_t *
     nativePaint(env,actor,graphics);
     AGAuraSpritePaint(env,graphics,x,y,aura>>5,aura&31,1,frame);
 }
+

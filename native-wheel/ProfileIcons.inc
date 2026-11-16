@@ -2,6 +2,7 @@
 #include "ProfileIcons.h"
 static const uintptr_t NProfileCatalogs[6]={0x207fa20,0x20af620,0x20dd320,0x210b010,0x2138d00,0x21669f0};
 static const uintptr_t NProfileConsumables[6]={0x2098970,0x20c7200,0x20f4ef0,0x2122be0,0x21508d0,0x217e5c0};
+static const uintptr_t NProfilePools[6]={0x2094ac0,0x20c34f0,0x20f11e0,0x211eed0,0x214cbc0,0x217a8b0};
 static const uintptr_t NProfileActors[6]={0x2091b80,0x20c0670,0x20ee360,0x211c050,0x2149d40,0x2177a30};
 static uint8_t *NProfileVector(uint8_t *v,int *count){
  *count=0;if(!v)return NULL;uint8_t *a=*(void **)(v+0x18);int n=*(int *)(v+0x24);
@@ -27,7 +28,7 @@ __attribute__((noinline,optnone)) static int NCopyImageRegion(void *env,void *op
  if(!j->image)return 0;
  j->root=((void *(*)(void *,void *))jni[21])(env,j->image);if(!j->root)return 0;
  int iw=*(int *)(j->image+0x20),ih=*(int *)(j->image+0x24);
- if(iw<1||ih<1||iw>2048||ih>8192)return 0;
+ if(iw<1||ih<1||iw>2048||ih>65536)return 0;
  int w=j->w?j->w:iw,h=j->h?j->h:ih,sx=j->x,sy=j->y,pw=iw,ph=ih;
  if(w<1||h<1||w>1024||h>1024||(size_t)w*h>1048576)return 0;
  uint8_t *array=*(void **)(j->image+0x10),*direct=NULL;const uint32_t *words=NULL;
@@ -75,12 +76,21 @@ static int NReadImageRegion(void *env,uint8_t *image,int x,int y,int w,int h,int
  if(j.root)((void (*)(void *,void *))jni[22])(env,j.root);
  if(result<=0){free(out->rgba);out->rgba=NULL;if(result<0)out->status=6;return 0;}return 1;
 }
-typedef struct {int variant,hero,slot,id;AGProfileIcon *out;uint8_t *image;} NProfileIconJob;
+typedef struct {int variant,hero,slot,id;AGProfileIcon *out;uint8_t *image;int atlas;} NProfileIconJob;
 static int NFindProfileIcon(void *env,void *opaque){
  NProfileIconJob *j=opaque;uintptr_t b=NBase();AGProfileIcon *out=j->out;
  if(j->slot<5){
   uint8_t *item=NProfileTemplate(j->variant,j->hero,j->slot,j->id);if(!item){out->status=1;return 0;}
   int64_t icon=*(int64_t *)(item+0x88);if(icon<0||icon>32767){out->status=2;return 0;}out->iconID=icon;
+  /* APK MarketNative119.extractIcon uses the same full sheet as native j5_.paint.
+     The generic Image cache is also used for unrelated downloaded images. */
+  uint8_t *pool=*(void **)(b+NProfilePools[j->variant]);
+  j->image=pool?*(void **)(pool+0xb0):NULL;
+  if(j->image){
+   int w=*(int *)(j->image+0x20),h=*(int *)(j->image+0x24);
+   if(w<16||w>128||icon*w+16>h){out->status=7;return 0;}
+   j->atlas=1;return 1;
+  }
   void *cache=((void *(*)(void *))(b+0xc46b40))(env);
   void *key=((void *(*)(void *,int))(b+0xab216c))(env,(int)icon);
   if(cache&&key)j->image=((void *(*)(void *,void *,void *))(b+0xbc88a0))(env,cache,key);
@@ -97,9 +107,10 @@ int AGProfileIconRead(void *env,int variant,int hero,int slot,int id,AGProfileIc
  if(!env||variant<0||variant>=6||hero<0||hero>9||slot<0||slot>5||id<0||id>32767)return 0;
  NProfileIconJob j={.variant=variant,.hero=hero,.slot=slot,.id=id,.out=out};
  if(NRun(env,NFindProfileIcon,&j)<=0)return 0;
+ if(j.atlas)return NReadImageRegion(env,j.image,0,out->iconID**(int *)(j.image+0x20),16,16,-1,out);
  return NReadImageRegion(env,j.image,0,0,0,0,out->iconID,out);
 }
-typedef struct {int variant,hero,parts[5];uint8_t *body,*atlas;int rect[5][6];} NAvatarJob;
+typedef struct {int variant,hero,pose,parts[5];uint8_t *body,*atlas;int rect[5][6];} NAvatarJob;
 static uint8_t *NArrayObject(uint8_t *a,int i){return a&&i>=0&&i<*(int *)(a+0x10)?*(void **)(a+0x18+i*8):NULL;}
 static int NAvatarInfo(void *env,void *opaque){
  NAvatarJob *j=opaque;uintptr_t b=NBase();
@@ -111,26 +122,26 @@ static int NAvatarInfo(void *env,void *opaque){
   if(j->parts[s]<0)continue;
   uint8_t *t=NProfileTemplate(j->variant,j->hero,s,j->parts[s]);if(!t)return 0;
   for(int k=0;k<6;k++){
-   uint8_t *a=*(void **)(t+0x10+k*8);if(!a||*(int *)(a+0x10)<1)return 0;
-   j->rect[s][k]=k<2?*(int16_t *)(a+0x14):*(int8_t *)(a+0x14);
+   uint8_t *a=*(void **)(t+0x10+k*8);if(!a||*(int *)(a+0x10)<=j->pose)return 0;
+   j->rect[s][k]=k<2?*(int16_t *)(a+0x14+j->pose*2):*(int8_t *)(a+0x14+j->pose);
   }
  }
  return 1;
 }
-static void NAvatarBlit(uint8_t *dest,const AGProfileIcon *src,int x,int y){
+static void NAvatarBlit(uint8_t *dest,const AGProfileIcon *src,int x,int y,int mirror){
  for(int yy=0;yy<src->height;yy++)for(int xx=0;xx<src->width;xx++){
   /* Mirror the complete pose, including equipment, about its foot anchor. */
-  int dx=79-(x+xx),dy=y+yy;if(dx<0||dx>=80||dy<0||dy>=80)continue;
+  int dx=mirror?79-(x+xx):x+xx,dy=y+yy;if(dx<0||dx>=80||dy<0||dy>=80)continue;
   const uint8_t *s=src->rgba+((size_t)yy*src->width+xx)*4;uint8_t *d=dest+((size_t)dy*80+dx)*4;
   unsigned a=s[3],da=d[3],alpha=a+(da*(255-a)+127)/255;if(!alpha)continue;
   for(int k=0;k<3;k++)d[k]=(s[k]*a*255+d[k]*da*(255-a)+alpha*127)/(alpha*255);
   d[3]=alpha;
  }
 }
-int AGProfileAvatarRead(void *env,int v,int hero,const int parts[5],AGProfileIcon *out){
+int AGProfileAvatarPoseRead(void *env,int v,int hero,const int parts[5],int pose,int mode,AGProfileIcon *out){
  if(!out)return 0;*out=(AGProfileIcon){.status=6,.iconID=-1};
- if(!env||v<0||v>=6||hero<0||hero>9||!parts)return 0;
- NAvatarJob j={.variant=v,.hero=hero};for(int i=0;i<5;i++){if(parts[i]<-1||parts[i]>32767)return 0;j.parts[i]=parts[i];}
+ if(!env||v<0||v>=6||hero<0||hero>9||!parts||pose<0||pose>5||(mode!=0&&mode!=2))return 0;
+ NAvatarJob j={.variant=v,.hero=hero,.pose=pose};for(int i=0;i<5;i++){if(parts[i]<-1||parts[i]>32767)return 0;j.parts[i]=parts[i];}
  if(NRun(env,NAvatarInfo,&j)<=0)return 0;
  int bw=*(int *)(j.body+0x20),bh=*(int *)(j.body+0x24)/5;
  if(bw<1||bw>64||bh<1||bh>64)return 0;
@@ -141,15 +152,20 @@ int AGProfileAvatarRead(void *env,int v,int hero,const int parts[5],AGProfileIco
  for(int n=0;n<6;n++){
   int s=order[n];AGProfileIcon region={.status=6,.iconID=-1};
   if(s==5){
-   if(!NReadImageRegion(env,j.body,0,0,bw,bh,-1,&region))goto failed;
-   NAvatarBlit(out->rgba,&region,40-bw/2,64-bh);
+   if(!NReadImageRegion(env,j.body,0,(pose<5?pose:4)*bh,bw,bh,-1,&region))goto failed;
+   NAvatarBlit(out->rgba,&region,40-bw/2-(mode==2&&(bw&1)),64-bh,mode==2);
   }else{
    int *r=j.rect[s];if(j.parts[s]<0||r[2]==0||r[3]==0)continue;
    if(!j.atlas||!NReadImageRegion(env,j.atlas,r[0],r[1],r[2],r[3],-1,&region))goto failed;
-   NAvatarBlit(out->rgba,&region,40-ew/2+r[4]+18,64-eh+r[5]+40);
+   NAvatarBlit(out->rgba,&region,40-ew/2+r[4]+18,64-eh+r[5]+40,mode==2);
   }
   free(region.rgba);
  }
  out->width=out->height=80;out->status=0;return 1;
 failed:free(out->rgba);out->rgba=NULL;return 0;
+}
+
+int AGProfileAvatarRead(void *env,int v,int hero,const int parts[5],AGProfileIcon *out){return AGProfileAvatarPoseRead(env,v,hero,parts,0,2,out);}
+int AGNativeImageRGBA(void *env,void *image,int x,int y,int width,int height,AGProfileIcon *out){
+ if(!out||!env)return 0;*out=(AGProfileIcon){.status=6,.iconID=-1};return NReadImageRegion(env,image,x,y,width,height,-1,out);
 }
