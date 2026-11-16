@@ -69,7 +69,7 @@ jobs:
           py=native-wheel/build/device-qa/bin/python
           bin=native-wheel/build/QA/AGWheel.framework/AGWheel
           status=0
-          for test in test_profile_icons306 test_costume306 test_costume_shots306 test_chicky308 test_inventory_receive307 test_inventory_parity308 test_inventory_slide308 test_inventory_chain306 test_profile_icons304 test_profile_icons305 test_avatar305 test_inventory_pipeline305 test_inventory_session304 test_event_menu303 test_profile_viewport303 test_recipe_reply302 test_recipe_binding302 test_recipe_request301 test_craft_diagnostics300 test_canvas_recovery299 test_room_sender295 test_room_reply295 test_return_state297 test_watch_cleanup296 test_native_watch test_inventory_device282 test_recipe_reentry286 test_snapshot_flash286 test_watch_cold_start287 test_recipe_dialog289 test_snapshot_barrier289; do
+          for test in test_profile_icons306 test_costume306 test_costume_shots306 test_chicky307 test_inventory_receive307 test_inventory_parity308 test_inventory_slide308 test_inventory_chain306 test_profile_icons304 test_profile_icons305 test_avatar305 test_inventory_pipeline305 test_inventory_session304 test_event_menu303 test_profile_viewport303 test_recipe_reply302 test_recipe_binding302 test_recipe_request301 test_craft_diagnostics300 test_canvas_recovery299 test_room_sender295 test_room_reply295 test_return_state297 test_watch_cleanup296 test_native_watch test_inventory_device282 test_recipe_reentry286 test_snapshot_flash286 test_watch_cold_start287 test_recipe_dialog289 test_snapshot_barrier289; do
             "$py" "native-wheel/$test.py" "$bin" > "native-wheel/build/$test.txt" 2>&1 || status=1
             cat "native-wheel/build/$test.txt"
           done
