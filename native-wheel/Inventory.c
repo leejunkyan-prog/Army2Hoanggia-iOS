@@ -57,6 +57,7 @@ int AGInventoryGeometry(int v,int *out){(void)v;(void)out;return 0;}
 void AGInventoryPrepareRecipe(void *e,void *m,int v){(void)e;(void)m;(void)v;}
 #else
 #include <mach-o/dyld.h>
+#include <pthread.h>
 #include "NotesMap.h"
 #include "InventoryMap.h"
 extern int AGWheelGuard(void *,int (*)(void *,void *),void *,void *);
@@ -141,7 +142,8 @@ static int makeDisplay(void *e,void *opaque){
     for(int i=0;i<j->count;i++)((void (*)(void *,void *,void *))(b+0x1dfcac))(e,vec,j->rows[i].item);
     j->vector=pin(e,vec);return j->vector!=NULL;
 }
-void AGInventoryOrder(void *env,int v,uint8_t *canvas,uint8_t *screen,int active){
+static pthread_mutex_t inventoryMutex=PTHREAD_MUTEX_INITIALIZER;
+static void inventoryOrder(void *env,int v,uint8_t *canvas,uint8_t *screen,int active){
     if(v<0||v>=6)return;
     InventoryState *state=&inventories[v];
     uintptr_t connection=inventoryConnection(v);
@@ -244,7 +246,11 @@ void AGInventoryOrder(void *env,int v,uint8_t *canvas,uint8_t *screen,int active
 }
 /* Rebind in place before the original callback calls v() again. The recipe
    child and its parent are one chest session, including while a menu is up. */
-void *AGInventoryResolve(void *env,void *opaque){
+void AGInventoryOrder(void *env,int v,uint8_t *canvas,uint8_t *screen,int active){
+    if(!env||pthread_mutex_trylock(&inventoryMutex))return;
+    inventoryOrder(env,v,canvas,screen,active);pthread_mutex_unlock(&inventoryMutex);
+}
+static void *inventoryResolve(void *env,void *opaque){
     if(!env||!opaque)return opaque;
     for(int v=0;v<6;v++){
         uint8_t *canvas=*(uint8_t **)(base()+AGNotesMaps[v].canvas);if(!canvas)continue;
@@ -283,6 +289,10 @@ void *AGInventoryResolve(void *env,void *opaque){
         }
     }
     return opaque;
+}
+void *AGInventoryResolve(void *env,void *opaque){
+    if(!env||pthread_mutex_trylock(&inventoryMutex))return opaque;
+    void *result=inventoryResolve(env,opaque);pthread_mutex_unlock(&inventoryMutex);return result;
 }
 int AGInventoryGeometry(int v,int *out){
     if(v<0||v>=6||!out)return 0;

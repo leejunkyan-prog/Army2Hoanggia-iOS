@@ -38,7 +38,11 @@ def hook(u,pc,size,_):
     elif pc==DELETE:deleted.append(t.reg(1));t.ret()
     elif pc==t.B+0x1b4ba8:t.ret(texture)
     elif pc==t.B+0x39dc58:t.ret(1)
+    elif pc==t.B+0x39dd54:t.ret(0)
     elif pc==t.B+0x39dd00:t.ret(pixmap)
+    elif pc==t.B+0x398e0c:t.ret(16)
+    elif pc==t.B+0x398e30:t.ret(16)
+    elif pc==t.B+0x398fe8:t.ret(0)
     elif pc==t.B+0x1db1f8:
         assert t.reg(1)==pixmap;pixel_reads+=1;t.ret(pixel_values[t.reg(3)*16+t.reg(2)])
 t.u.hook_add(UC_HOOK_CODE,hook)

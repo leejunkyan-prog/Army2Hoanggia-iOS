@@ -21,7 +21,7 @@ function item(out,i){out.utf('M:'+i).utf('Trang bị '+i).utf('Trang bị').byte
  const browser=await chromium.launch({args:['--no-sandbox'],executablePath:process.env.ARMY2_CHROMIUM});
  const page=await browser.newPage({viewport:{width:390,height:592},deviceScaleFactor:2});
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
- await page.addInitScript(()=>{window.sent=[];window.profileDiagnostics=[];window.profileIconRequests=[];window.webkit={messageHandlers:{lobby:{postMessage:a=>a[0]==='profileDiagnostic'?profileDiagnostics.push(a[1]):a[0]==='profileIcons'?profileIconRequests.push(a[1]):sent.push(a)}}};});
+ await page.addInitScript(()=>{window.sent=[];window.profileDiagnostics=[];window.profileIconRequests=[];window.webkit={messageHandlers:{lobby:{postMessage:a=>a[0]==='profileDiagnostic'?profileDiagnostics.push(a[1]):a[0]==='profileIcons'?profileIconRequests.push(a[1]):a[0]==='avatar'?null:sent.push(a)}}};});
  async function open(name, character=-1, result=null){
   await page.goto(process.env.ARMY2_VIEWER_URL||pathToFileURL(path.join(__dirname,'viewer/lobby.html')).href);
   await page.evaluate(([tab,hero,result])=>openTab(tab,hero,0,result),[name,character,result]);

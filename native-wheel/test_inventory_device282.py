@@ -70,7 +70,7 @@ def hook(_,pc,size,data):
  name=imports[pc]
  if name=='__dyld_get_image_header':ret(B)
  elif name=='_clock_gettime':put(reg(1),'<qq',int(now),round((now-int(now))*1000000000));ret()
- elif name in ('_pthread_mutex_lock','_pthread_mutex_unlock'):ret()
+ elif name in ('_pthread_mutex_lock','_pthread_mutex_trylock','_pthread_mutex_unlock'):ret()
  elif name=='_malloc':ret(alloc(reg(0)))
  elif name=='_calloc':ret(alloc(reg(0)*reg(1)))
  elif name=='_free':ret()

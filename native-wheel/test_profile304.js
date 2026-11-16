@@ -34,7 +34,7 @@ const b64=bytes=>Buffer.from(bytes).toString('base64');
  const browser=await chromium.launch({args:['--no-sandbox'],executablePath:process.env.ARMY2_CHROMIUM});
  const page=await browser.newPage({viewport:{width:432,height:626},deviceScaleFactor:2});
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
- await page.addInitScript(()=>{window.sent=[];window.requests=[];window.logs=[];window.webkit={messageHandlers:{lobby:{postMessage:([kind,data])=>{if(kind==='profileIcons')requests.push(data);else if(kind==='profileDiagnostic')logs.push(data);else sent.push([kind,data]);}}}};});
+ await page.addInitScript(()=>{window.sent=[];window.requests=[];window.logs=[];window.webkit={messageHandlers:{lobby:{postMessage:([kind,data])=>{if(kind==='profileIcons')requests.push(data);else if(kind==='profileDiagnostic')logs.push(data);else if(kind!=='avatar')sent.push([kind,data]);}}}};});
  await page.goto('http://127.0.0.1:'+server.address().port+'/lobby.html');
  await page.evaluate(()=>{lobbyViewport(432,[432,0,0,0,0,0,0],602);openTab('field',0);});
  await page.evaluate(b=>receiveFrame(-120,b),b64(board(1)));await page.evaluate(()=>profile());

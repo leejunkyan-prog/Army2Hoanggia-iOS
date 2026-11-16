@@ -58,6 +58,7 @@ int AGProfileIconRead(void *e,int v,int h,int s,int id,AGProfileIcon *out){
     *out=(AGProfileIcon){.status=0,.iconID=210+s,.width=2,.height=2,.rgba=malloc(16)};
     for(int i=0;i<4;i++){out->rgba[i*4]=80+s*10;out->rgba[i*4+1]=180;out->rgba[i*4+2]=255;out->rgba[i*4+3]=255;}return 1;
 }
+int AGProfileAvatarRead(void *e,int v,int h,const int p[5],AGProfileIcon *out){*out=(AGProfileIcon){.status=6,.iconID=-1};return 0;}
 int AGLobbySend(void *e,int v,uintptr_t c,int command,const uint8_t *p,size_t n){return 1;}
 int AGAuraRank(int v,uintptr_t c,uint32_t id,unsigned hero){return 0;}
 #endif

@@ -9,6 +9,19 @@ let editSerial=0,editState=null,inputPending=false,marketColumns=7,marketGeometr
 let profileCanvasHeight=0;
 let profileDiagnosticSignature='';
 let profileIconRequestSignature='',profileNativeIcons=null;
+const avatarRequests=new Map(),avatarStatuses=new Map();
+const nativeAvatarKey=(hero,parts)=>hero+':'+parts.join(',');
+window.lobbyAvatarNeeded=(hero,parts)=>{
+ if(closed||!Number.isInteger(hero)||hero<0||hero>9||!Array.isArray(parts)||parts.length!==5||parts.some(p=>!Number.isInteger(p)||p< -1||p>32767))return;
+ const key=nativeAvatarKey(hero,parts),old=avatarRequests.get(key),now=Date.now();
+ if(old&&(old.count>=3||now-old.at<1500))return;
+ avatarRequests.set(key,{at:now,count:(old?.count||0)+1});window.webkit.messageHandlers.lobby.postMessage(['avatar',{hero,parts}]);
+};
+window.lobbyNativeAvatar=data=>{
+ if(closed||!data||!Array.isArray(data.parts)||data.parts.length!==5)return;
+ const key=nativeAvatarKey(data.hero,data.parts);if(!avatarRequests.has(key))return;
+ avatarStatuses.set(key,data.status);if(data.png)ui.setNativeAvatar(data.hero,data.parts,data.png);reportProfile();
+};
 const icons=new Map();
 function bytes64(bytes){return btoa(Array.from(bytes,b=>String.fromCharCode(b)).join(''));}
 function status(message){notice=String(message);document.getElementById('status').textContent=notice;}
@@ -166,7 +179,7 @@ function reportProfile(){
   item_ids:items.map(p=>p?.id??-1),upgrades:items.map(p=>p?.upgrade??0),tiers:items.map(p=>p?.tier??0),
   has_details:items.map((_,i)=>r.details?.[i]?1:0),flat:items.map((_,i)=>r.details?.[i]?.flat||[]),percent:items.map((_,i)=>r.details?.[i]?.percent||[]),
   gem_counts:items.map((_,i)=>r.gems?.[i]?.length||0),icon_bytes:items.map((_,i)=>r.icons?.[i]?.length||0),
-  icon_sources:sources.map(s=>s.kind),catalog_frames:sources.map(s=>s.frame),atlas_width:Math.max(0,...sources.map(s=>s.atlasWidth||0)),atlas_height:Math.max(0,...sources.map(s=>s.atlasHeight||0)),native_icon_status:profileNativeIcons?.status||[],native_icon_ids:profileNativeIcons?.icon_ids||[]};
+  icon_sources:sources.map(s=>s.kind),catalog_frames:sources.map(s=>s.frame),atlas_width:Math.max(0,...sources.map(s=>s.atlasWidth||0)),atlas_height:Math.max(0,...sources.map(s=>s.atlasHeight||0)),native_icon_status:profileNativeIcons?.status||[],native_icon_ids:profileNativeIcons?.icon_ids||[],native_avatar_status:avatarStatuses.get(nativeAvatarKey(r.avatar.character,r.avatar.parts))??-1};
  const signature=JSON.stringify(data);if(signature===profileDiagnosticSignature)return;profileDiagnosticSignature=signature;
  window.webkit.messageHandlers.lobby.postMessage(['profileDiagnostic',data]);
  const request={requested_id:r.id,serial:field.pending,hero:r.avatar.character,ids:items.map(p=>p?.id??-1)},requestKey=JSON.stringify(request);

@@ -91,6 +91,17 @@ __attribute__((visibility("default"))) void AGGridAdjust(uint64_t *r,uintptr_t p
     while(lo<hi){size_t mid=(lo+hi)/2;if(gridSites[mid].site<off)lo=mid+1;else hi=mid;}
     if(lo>=sizeof(gridSites)/sizeof(gridSites[0])||gridSites[lo].site!=off)return;
     AGGridSite s=gridSites[lo];uint8_t *canvas=*(uint8_t **)(base+AGNotesMaps[s.variant].canvas);Grid g=dimensions(canvas);
+    if(s.kind==0&&canvas&&(s.metric==GM_INV_SCROLL||s.metric==GM_HALF_INNER)){
+        /* C6.n replaces +0x70 AFTER the global tick. Restore the private
+           order inside that native update and again before its painter reads
+           the rows. Calling only AGInventoryTick loses the visible order. */
+        uint8_t *screen=*(void **)(canvas+0xb8);void *clazz=*(void **)(base+gridClasses[s.variant][0]);
+        if(screen&&clazz&&*(void **)screen==clazz){
+            AGInventoryOrder((void *)r[19],s.variant,canvas,screen,1);
+            layout(base,s.variant,0,screen,g,*(int *)(canvas+0x130));
+            if(s.metric==GM_INV_SCROLL)r[9]=(uint32_t)(*(int *)(screen+0xcc)**(int *)(screen+0xb8));
+        }
+    }
     if(s.metric==GM_LAYOUT){layout(base,s.variant,s.kind,(uint8_t *)r[1],g,canvas?*(int *)(canvas+0x130):432);return;}
     if(s.kind==0&&s.metric==GM_HALF_INNER&&canvas&&r[19]&&r[20]){
         // The chest paints over its parent screen. Reset the parent's clip
@@ -105,5 +116,6 @@ __attribute__((visibility("default"))) void AGGridAdjust(uint64_t *r,uintptr_t p
     else if((word&0x7f000000)==0x51000000)value=(uint32_t)r[rn]-value;
     r[rd]=value;
 }
+
 
 
