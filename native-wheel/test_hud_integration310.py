@@ -23,7 +23,7 @@ arena_slots=(0x2082e30,0x20b23a0,0x20e0090,0x210dd80,0x213ba70,0x2169760)
 roster_slots=(0x207f060,0x20aec70,0x20dc970,0x210a660,0x2138350,0x2166040)
 actor_slots=(0x2091b80,0x20c0670,0x20ee360,0x211c050,0x2149d40,0x2177a30)
 services=(0x207b870,0x20ab650,0x20d9350,0x2107040,0x2134d30,0x2162a20)
-strings={};fonts={};images={};tls={};once=set();next_key=0;calls=[];glyphs=[];font_events=[];graphics=0;loop_end=0;current_v=0
+strings={};fonts={};images={};tls={};once=set();next_key=0;calls=[];glyphs=[];font_events=[];loop_end=0;current_v=0
 ctor_sites=set();native_body=[];default_bars=[]
 npc_paints=tuple(p+0x1f3c for p in BARS)
 arena_calls={}
@@ -43,9 +43,6 @@ def java(s):p=t.alloc(0x40);strings[p]=units(s);return p
 def string(p):return struct.pack('<'+'H'*len(strings[p]),*strings[p]).decode('utf-16-le','surrogatepass')
 def image(name,w=35,h=320):
  p=t.alloc(0x40);t.put(p+0x20,'<ii',w,h);images[p]=(name,w,h);return p
-def target(at):
- w=struct.unpack_from('<I',raw,at)[0];assert w>>26==0x25;n=w&0x3ffffff
- return at+4*(n-(1<<26) if n&(1<<25) else n)
 def class_slot(getter):
  p,q=struct.unpack_from('<II',raw,getter+12);n=((p>>5)&0x7ffff)<<2|((p>>29)&3)
  if n&(1<<20):n-=1<<21

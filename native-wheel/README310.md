@@ -30,5 +30,29 @@ protocol/pixel differential checks and native, Simulator and interface
 regressions are retained. Packaging reuses the audited Build309 native patch
 sites; the production changes are confined to the framework and build number.
 
-The generated IPA is unsigned. ARM64 emulation substitutes OS/JVM/graphics
-boundaries and does not claim physical-iPhone or live-server testing.
+## Local validation and current build blocker
+
+The unchanged HUD.c compiles to an iOS12 ARM64 object locally. A separate
+C-only Darwin ARM64 library (Zig0.14.1, macOS12 target) was loaded beside the
+previous framework through `test_hud_cross310.py`. The new integration fixture,
+existing HUD lifecycle test and static bridge checks all pass. This fallback
+is a code/ABI check; it is not an Xcode-built framework or installable IPA.
+The APK Java/protocol differential test also passes 24,000+ pixel cases.
+
+Reproduce the C-only fallback with the prior AGWheel binary and the Python
+dependencies used by the normal workflow:
+
+```sh
+zig cc -target aarch64-macos.12.0 -std=c11 -O1 -dynamiclib -nostdlib \
+  -Wl,-undefined,dynamic_lookup native-wheel/HUD.c -o HUD310.dylib
+python native-wheel/test_hud_cross310.py PREVIOUS_AGWHEEL HUD310.dylib test_hud_integration310
+python native-wheel/test_hud_cross310.py PREVIOUS_AGWHEEL HUD310.dylib test_hud309
+python native-wheel/test_hud_cross310.py PREVIOUS_AGWHEEL HUD310.dylib test_hud_bridges309
+```
+
+GitHub currently rejects job startup with: "The job was not started because
+recent account payments have failed or your spending limit needs to be
+increased." Xcode compilation, full Simulator/interface regressions and a
+new IPA artifact remain pending the account's Billing & plans resolution.
+The PR remains a draft until those checks pass. Physical-iPhone or live-server
+testing is not claimed. The planned IPA is unsigned.
