@@ -75,12 +75,17 @@ static int resetInventoryClip(void *env,void *opaque){
     InventoryClip *clip=opaque;
     uintptr_t base=(uintptr_t)_dyld_get_image_header(0);
     uint8_t *graphics=clip->graphics;
+    int translated=graphics[0x50],x=*(int *)(graphics+0x48),y=*(int *)(graphics+0x4c);
     if(graphics[0x50]){
         ((void (*)(void *,void *,int,int))(base+0x1c619c))
-            (env,graphics,-*(int *)(graphics+0x48),-*(int *)(graphics+0x4c));
+            (env,graphics,-x,-y);
     }
     ((void (*)(void *,void *,int,int,int,int))(base+0x1c6190))
         (env,graphics,0,0,clip->width,clip->height);
+    /* The parent panel has already translated by C6's native entrance
+       offset (+0x34). Clear only its inherited clip: cancelling that
+       translation makes the body appear instantly while the frame slides. */
+    if(translated)((void (*)(void *,void *,int,int))(base+0x1c619c))(env,graphics,x,y);
     return 1;
 }
 
@@ -116,6 +121,7 @@ __attribute__((visibility("default"))) void AGGridAdjust(uint64_t *r,uintptr_t p
     else if((word&0x7f000000)==0x51000000)value=(uint32_t)r[rn]-value;
     r[rd]=value;
 }
+
 
 
 
