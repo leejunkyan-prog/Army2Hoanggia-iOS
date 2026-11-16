@@ -120,7 +120,7 @@ for v in range(6 if __name__=='__main__' else 0):
  put(canvas+0x108,'<Q',123);call('_AGInventoryOrder',E,v,canvas,screen,1);assert get(screen+0x70,'<Q')==display
  put(canvas+0x108,'<Q',0);call('_AGInventoryOrder',E,v,canvas,screen,1);assert displayed(screen)==[105,70001,7,120]
  assert ids(nextvec)==[70001,7,105,120]
- assert get(screen+0x90,'<Q')==fresh[0]and get(fresh[2]+0x90,'<q')==1,'Keep selection when a new item is promoted'
+ assert get(screen+0x90,'<Q')==fresh[2]and get(fresh[2]+0x90,'<q')==1,'Show the new item at the first slot after its result closes'
  # Selected recipe must resolve into the next server vector at action time.
  put(screen+0xc8,'<i',3);put(screen+0x90,'<Q',fresh[3]);newpaper=item(120,1);replacement=vector([fresh[0],newpaper,fresh[2],fresh[1]]);put(pool+0xa8,'<Q',replacement)
  assert call('_AGInventoryResolve',E,fresh[3])==newpaper
@@ -130,7 +130,7 @@ for v in range(6 if __name__=='__main__' else 0):
  assert call('_AGInventoryResolve',E,newpaper)==newer
  assert get(screen+0x90,'<Q')==newer
  put(canvas+0xb8,'<Q',screen)
- call('_AGInventoryOrder',E,v,canvas,screen,0);call('_AGInventoryOrder',E,v,canvas,screen,1);assert displayed(screen)==[70001,7,105,120]
+ call('_AGInventoryOrder',E,v,canvas,screen,0);call('_AGInventoryOrder',E,v,canvas,screen,1);assert displayed(screen)==[105,70001,7,120]
  assert any(pc==B+refresh[v]for pc,s in refreshes)
  # Simulate 100 refreshes while keeping template IDs and handles unchanged.
  for turn in range(100):
@@ -140,6 +140,9 @@ for v in range(6 if __name__=='__main__' else 0):
  empty=vector([]);put(pool+0xa8,'<Q',empty);put(screen+0x70,'<Q',empty)
  call('_AGInventoryOrder',E,v,canvas,screen,1);assert displayed(screen)==[]
  call('_AGInventoryOrder',E,v,canvas,0,0)
+ # Start another login before testing the default grouped order.
+ serviceSlots=[0x207b870,0x20ab650,0x20d9350,0x2107040,0x2134d30,0x2162a20]
+ serviceClass=alloc(0xb0);service=alloc(0x30);put(B+serviceSlots[v],'<Q',serviceClass);put(serviceClass+0xa0,'<Q',service);put(service+0x10,'<Q',0x123000+v)
  many=vector([item(i,100+i)for i in range(40,0,-1)]);put(pool+0xa8,'<Q',many);put(screen+0x70,'<Q',many)
  call('_AGInventoryOrder',E,v,canvas,screen,1);assert displayed(screen)==list(range(1,41))
  assert ids(many)==list(range(40,0,-1))
@@ -149,6 +152,6 @@ for v in range(6 if __name__=='__main__' else 0):
  selected=get(screen+0x90,'<Q');assert get(selected+0x80,'<q')==25 and get(selected+0x90,'<q')==125
  call('_AGInventoryOrder',E,v,canvas,0,0)
 assert all(n==0 for n in pins.values()),pins
-if __name__=='__main__':print('PASS compiled ARM64 bridge: six variants, 600 updates, zero blocking monitor calls, unchanged server vectors, stable unchanged frames, vector replacement, dialog deferral, crafting return, recipe resolution, reopen sorting and balanced JNI roots')
+if __name__=='__main__':print('PASS compiled ARM64 bridge: six variants, 600 updates, zero blocking monitor calls, unchanged server vectors, stable unchanged frames, vector replacement, dialog deferral, crafting return, recipe resolution, preserved reopen order, login grouping and balanced JNI roots')
 
 

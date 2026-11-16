@@ -53,6 +53,11 @@ CGRect AGGameRect(UIView *view){CGRect r=view.bounds;r.size.height*=.72;return r
 #else
 int AGWheelGuard(void *e,int (*fn)(void *,void *),void *j,void *entry){return 0;}
 int AGLobbyReadAccount(void *e,int v,AGLobbyAccount *a){return 0;}
+int AGProfileIconRead(void *e,int v,int h,int s,int id,AGProfileIcon *out){
+    NSCAssert(e==env295&&v>=0&&v<6&&h==6&&s>=0&&s<6,@"Profile image lookup left its game/PB context");
+    *out=(AGProfileIcon){.status=0,.iconID=210+s,.width=2,.height=2,.rgba=malloc(16)};
+    for(int i=0;i<4;i++){out->rgba[i*4]=80+s*10;out->rgba[i*4+1]=180;out->rgba[i*4+2]=255;out->rgba[i*4+3]=255;}return 1;
+}
 int AGLobbySend(void *e,int v,uintptr_t c,int command,const uint8_t *p,size_t n){return 1;}
 int AGAuraRank(int v,uintptr_t c,uint32_t id,unsigned hero){return 0;}
 #endif
@@ -157,6 +162,17 @@ static void battlefield296(UIWindow *host){
             if(!ready)pump295(.03);
         }
         NSCAssert(ready,@"Real battlefield page failed to load");
+        if(!automatic){
+            js296(panel.web,@"window.png304=null;window.lobbyNativeProfileIcons=d=>{const im=new Image();im.onload=()=>{const cv=document.createElement('canvas');cv.width=cv.height=2;const g=cv.getContext('2d');g.drawImage(im,0,0);window.png304={pixels:Array.from(g.getImageData(0,0,1,1).data),ids:d.ids,status:d.status,hero:d.hero};};im.src='data:image/png;base64,'+d.png[0];};window.webkit.messageHandlers.lobby.postMessage(['profileIcons',{requested_id:41,serial:2,hero:6,ids:[56,54,55,57,58,2046]}]);");
+            __block BOOL queued=NO;
+            for(int i=0;i<100&&!queued;i++){ui295(^{queued=panel.profileIconRequest!=nil;});if(!queued)pump295(.01);}
+            NSCAssert(queued,@"Native profile icon request was not queued by the real web handler");
+            AGLobbyTick(env295,v,session295);
+            NSDictionary *png;
+            for(int i=0;i<100&&!png;i++){id value=js296(panel.web,@"window.png304");if([value isKindOfClass:NSDictionary.class])png=value;else pump295(.01);}
+            NSCAssert([png[@"pixels"] isEqual:@[@80,@180,@255,@255]],@"Native RGBA -> UIImage PNG -> WKWebView changed or lost icon pixels");
+            NSCAssert([png[@"ids"] count]==6&&[png[@"status"] isEqual:@[@0,@0,@0,@0,@0,@0]]&&[png[@"hero"] intValue]==6,@"Native icon reply lost physical slot/PB identity");
+        }
         ui295(^{
             int samples=v==0&&!automatic?40:1;
             for(int i=0;i<samples;i++)AGSaveProfileDiagnostic(panel,@{@"requested_id":@41,@"hero":@9,@"serial":@(i+1),@"item_ids":@[@56,@54,@55,@57,@58,@2999],@"icon_sources":@[@1,@1,@2,@2,@3,@0],@"flat":@[@[@115,@181,@95,@96,@91]],@"PRIVATE_ACCOUNT_NAME":@"DO_NOT_EXPORT_PNG_OR_ACCOUNT_TEXT"});

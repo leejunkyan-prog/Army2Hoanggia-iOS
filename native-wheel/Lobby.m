@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <string.h>
 #include <math.h>
+#include "ProfileIcons.h"
 #include "Lobby.h"
 #include "Spectator.h"
 #include "Aura.h"
@@ -26,6 +27,7 @@
 @property(nonatomic) BOOL closing;
 @property(nonatomic) BOOL watching;
 @property(nonatomic) BOOL requestedGearAtlas;
+@property(nonatomic,strong) NSDictionary *profileIconRequest;
 @property(nonatomic) NSTimeInterval watchDeadline;
 @property(nonatomic,strong) NSData *outgoing;
 @property(nonatomic,strong) NSMutableArray *profileHistory;
@@ -69,7 +71,7 @@ static void AGSaveProfileDiagnostic(AGLobby *panel,NSDictionary *input){
     if(panel.tab!=AGLobbyField||panel.closing)return;
     NSMutableDictionary *fields=[NSMutableDictionary dictionary];
     for(NSString *key in @[@"requested_id",@"rank",@"serial",@"hero",@"level",@"abilities",@"item_ids",@"upgrades",@"tiers",
-        @"has_details",@"flat",@"percent",@"gem_counts",@"icon_bytes",@"icon_sources",@"catalog_frames",@"atlas_width",@"atlas_height"]){
+        @"has_details",@"flat",@"percent",@"gem_counts",@"icon_bytes",@"icon_sources",@"catalog_frames",@"atlas_width",@"atlas_height",@"native_icon_ids",@"native_icon_status"]){
         id n=AGProfileNumber(input[key],0);if(n)fields[key]=n;
     }
     if(!fields[@"requested_id"]||[fields[@"requested_id"] intValue]<1||!fields[@"hero"]||[fields[@"hero"] intValue]<0||[fields[@"hero"] intValue]>9)return;
@@ -79,7 +81,7 @@ static void AGSaveProfileDiagnostic(AGLobby *panel,NSDictionary *input){
     [panel.profileHistory addObject:sample];while(panel.profileHistory.count>32)[panel.profileHistory removeObjectAtIndex:0];
     int build=[NSBundle.mainBundle.infoDictionary[@"CFBundleVersion"] intValue];
     NSDictionary *report=@{@"build":@(build),@"created_at":stamp,@"latest":sample,@"history":[panel.profileHistory copy],
-        @"icon_source_legend":@{@"0":@"server_icon_unavailable",@"1":@"profile_server_png",@"2":@"live_server_catalog",@"3":@"image_loading",@"4":@"invalid_profile_png"}};
+        @"icon_source_legend":@{@"0":@"server_icon_unavailable",@"1":@"profile_server_png",@"2":@"live_server_catalog",@"3":@"image_loading",@"4":@"invalid_profile_png",@"5":@"native_server_catalog_image"}};
     NSData *data=[NSJSONSerialization dataWithJSONObject:report options:NSJSONWritingPrettyPrinted error:nil];if(!data||data.length>262144)return;
     NSString *directory=NSSearchPathForDirectoriesInDomains(NSDocumentDirectory,NSUserDomainMask,YES).firstObject;
     NSString *path=[directory stringByAppendingPathComponent:[NSString stringWithFormat:@"Profile%d-diagnostic.json",build]];
@@ -177,9 +179,32 @@ __attribute__((visibility("default"))) void AGLobbyOpenNative(void *env,int vari
 }
 
 // The game thread owns the connection. UIKit enqueues requests against it.
+static NSString *AGProfileIconPNG(AGProfileIcon *icon){
+    if(!icon->rgba||icon->width<1||icon->height<1)return @"";
+    CGColorSpaceRef space=CGColorSpaceCreateDeviceRGB();
+    CGDataProviderRef provider=CGDataProviderCreateWithData(NULL,icon->rgba,(size_t)icon->width*icon->height*4,NULL);
+    CGImageRef image=CGImageCreate(icon->width,icon->height,8,32,icon->width*4,space,kCGImageAlphaLast|kCGBitmapByteOrderDefault,provider,NULL,NO,kCGRenderingIntentDefault);
+    NSData *png=image?UIImagePNGRepresentation([UIImage imageWithCGImage:image]):nil;
+    if(image)CGImageRelease(image);CGDataProviderRelease(provider);CGColorSpaceRelease(space);
+    return png.length<65536?[png base64EncodedStringWithOptions:0]?:@"":@"";
+}
+static void AGLoadProfileIcons(void *env,AGLobby *panel,NSDictionary *request){
+    if(!request)return;
+    NSMutableArray *png=[NSMutableArray array],*statuses=[NSMutableArray array],*icons=[NSMutableArray array];
+    NSArray *ids=request[@"ids"];int hero=[request[@"hero"] intValue];
+    for(int slot=0;slot<6;slot++){
+        AGProfileIcon image={.status=1,.iconID=-1};
+        if([ids[slot] intValue]>=0)AGProfileIconRead(env,panel.variant,hero,slot,[ids[slot] intValue],&image);
+        [png addObject:AGProfileIconPNG(&image)];[statuses addObject:@(image.status)];[icons addObject:@(image.iconID)];free(image.rgba);
+    }
+    NSMutableDictionary *reply=[request mutableCopy];reply[@"png"]=png;reply[@"status"]=statuses;reply[@"icon_ids"]=icons;
+    NSData *data=[NSJSONSerialization dataWithJSONObject:reply options:0 error:nil];if(!data)return;
+    NSString *script=[NSString stringWithFormat:@"lobbyNativeProfileIcons(%@)",[[NSString alloc]initWithData:data encoding:NSUTF8StringEncoding]];
+    dispatch_async(dispatch_get_main_queue(),^{if(activePanel==panel&&!panel.closing&&!panel.watching)[panel.web evaluateJavaScript:script completionHandler:nil];});
+}
 void AGLobbyTick(void *env,int v,uintptr_t connection){
     AGLobby *active;NSData *body;int cmd=0,outcome=NoFieldResult;
-    BOOL reopen=NO,requestAtlas=NO;
+    BOOL reopen=NO,requestAtlas=NO;NSDictionary *profileIcons;
     @synchronized(AGLobby.class){
         connections[v]=connection;
         if(atlasConnection[v]!=connection){atlasConnection[v]=0;gearAtlas[v]=nil;}
@@ -204,12 +229,14 @@ void AGLobbyTick(void *env,int v,uintptr_t connection){
         }
         if(active&&active.variant==v&&!active.closing){
             body=active.outgoing;cmd=active.command;active.outgoing=nil;
+            profileIcons=active.profileIconRequest;active.profileIconRequest=nil;
             if(!body&&active.loaded&&active.tab==AGLobbyField&&!active.requestedGearAtlas&&atlasConnection[v]!=connection){
                 active.requestedGearAtlas=YES;
                 if(!atlasRequest[v]){atlasRequest[v]=connection;requestAtlas=YES;}
             }
         }
     }
+    AGLoadProfileIcons(env,active,profileIcons);
     if(reopen)openLobby(env,v,AGLobbyField,outcome);
     if(requestAtlas){
         const uint8_t package[]={4,255};
@@ -408,6 +435,13 @@ int AGLobbyReceive(void *env,void *message,int v){
     NSArray *args=message.body;
     if(args.count==2&&[args[0] isEqual:@"profileDiagnostic"]&&[args[1] isKindOfClass:NSDictionary.class]){
         if(activePanel==self&&!self.watching)AGSaveProfileDiagnostic(self,args[1]);return;
+    }
+    if(args.count==2&&[args[0] isEqual:@"profileIcons"]&&[args[1] isKindOfClass:NSDictionary.class]){
+        if(activePanel!=self||self.watching||self.closing||self.tab!=AGLobbyField)return;
+        NSDictionary *input=args[1];id hero=AGProfileNumber(input[@"hero"],0),account=AGProfileNumber(input[@"requested_id"],0),serial=AGProfileNumber(input[@"serial"],0),ids=AGProfileNumber(input[@"ids"],0);
+        if(!hero||[hero intValue]<0||[hero intValue]>9||!account||[account intValue]<1||!serial||[serial intValue]<1||![ids isKindOfClass:NSArray.class]||[ids count]!=6)return;
+        for(id item in ids)if(![item isKindOfClass:NSNumber.class]||[item intValue]<-1||[item intValue]>32767)return;
+        @synchronized(AGLobby.class){self.profileIconRequest=@{@"hero":hero,@"requested_id":account,@"serial":serial,@"ids":ids};}return;
     }
     if(args.count==2&&[args[0] isKindOfClass:NSString.class]&&[args[0] isEqual:@"close"]){[self close];return;}
     if(args.count==2&&[args[0] isEqual:@"edit"]&&[args[1] isKindOfClass:NSDictionary.class]){

@@ -86,6 +86,7 @@ __attribute__((noinline,optnone)) static int NNative(void *env,void *context){
     for(size_t i=0;i<j->length;i++)write(env,writer,data[i]);send(env,session,message);return 1;
 }
 static int NRun(void *env,int (*fn)(void *,void *),void *context){return AGWheelGuard(env,fn,context,(void *)(NBase()+0x1300d54));}
+#include "ProfileIcons.inc"
 /* The native ranking painter reads String[][][7][selected row]. Change only
    the event row; keep its native action/index and the other three labels. */
 static uintptr_t NEventTitles[6];

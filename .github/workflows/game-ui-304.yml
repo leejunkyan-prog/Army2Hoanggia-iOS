@@ -1,0 +1,133 @@
+name: Fix iOS 304 native profile icons and new inventory items
+on:
+  workflow_dispatch:
+  push:
+    branches: [fix/ios-304-profile-icons-inventory]
+permissions:
+  contents: read
+concurrency:
+  group: game-ui-304
+  cancel-in-progress: true
+jobs:
+  return-flow:
+    runs-on: macos-26
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Export automatic craft state and bounded event history on Simulator
+        run: bash native-wheel/test_craft_diagnostics302.sh
+      - name: Preserve existing metadata export on Simulator
+        run: bash native-wheel/test_return_diagnostics297.sh
+      - name: Preserve real waiting-worker diagnostics
+        run: bash native-wheel/test_return_diagnostics298.sh
+      - name: Recover an actually exited worker without a second update owner
+        run: bash native-wheel/test_canvas_recovery299.sh
+      - name: Exercise corrected production receive, tick, close and input flow
+        run: bash native-wheel/test_watch_return296.sh fixed
+      - name: Check overlay mounting and touch passthrough
+        run: bash native-wheel/test_watch_overlay293.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Army2HoangGia-Build304-return-flow-checks
+          path: native-wheel/build/*-result.json
+          if-no-files-found: warn
+          retention-days: 14
+  framework:
+    needs: return-flow
+    runs-on: macos-26
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compile iPhone ARM64 framework
+        run: bash native-wheel/build_304.sh
+      - name: Restore and hash-check the exact supplied Build293
+        run: |
+          GITHUB_STEP_SUMMARY= python3 delivery/build290/assemble.py
+          unzip -p ipa-output/Army2HoangGia-2.4.1-Build290-JarServer-unsigned.ipa Payload/Army2Hoanggia.app/Army2Hoanggia > native-wheel/build/base290-native
+          python3 native-wheel/package_293.py ipa-output/Army2HoangGia-2.4.1-Build290-JarServer-unsigned.ipa delivery/build293/framework-293.zip ipa-output/source293.ipa > native-wheel/build/source293-validation.json
+          python3 - <<'PY'
+          from pathlib import Path
+          from hashlib import sha256
+          from zipfile import ZipFile
+          source=Path('ipa-output/source293.ipa')
+          assert sha256(source.read_bytes()).hexdigest()=='3d307b2951c6a8540052d4d259d9307b56bcf9103cd5989e39bbf3301e136378'
+          with ZipFile(source) as z:
+              Path('native-wheel/build/base293-native').write_bytes(z.read('Payload/Army2Hoanggia.app/Army2Hoanggia'))
+          PY
+      - name: Run compiled return, real area reply and existing ARM64 regressions
+        shell: bash
+        run: |
+          python3 -m venv native-wheel/build/device-qa
+          native-wheel/build/device-qa/bin/pip install --quiet lief unicorn capstone
+          py=native-wheel/build/device-qa/bin/python
+          bin=native-wheel/build/QA/AGWheel.framework/AGWheel
+          status=0
+          for test in test_profile_icons304 test_inventory_session304 test_event_menu303 test_profile_viewport303 test_recipe_reply302 test_recipe_binding302 test_recipe_request301 test_craft_diagnostics300 test_canvas_recovery299 test_room_sender295 test_room_reply295 test_return_state297 test_watch_cleanup296 test_native_watch test_inventory_device282 test_recipe_reentry286 test_snapshot_flash286 test_watch_cold_start287 test_recipe_dialog289 test_snapshot_barrier289; do
+            "$py" "native-wheel/$test.py" "$bin" > "native-wheel/build/$test.txt" 2>&1 || status=1
+            cat "native-wheel/build/$test.txt"
+          done
+          for test in native-wheel/test_*291.py native-wheel/test_*292.py native-wheel/test_*293.py; do
+            name="$(basename "$test" .py)"
+            "$py" "$test" "$bin" > "native-wheel/build/$name.txt" 2>&1 || status=1
+            cat "native-wheel/build/$name.txt"
+          done
+          exit "$status"
+      - name: Package304 over the exact293 input and verify endpoints
+        run: |
+          py=native-wheel/build/device-qa/bin/python
+          target=ipa-output/Army2HoangGia-2.4.1-Build304-BattlefieldProfile-unsigned.ipa
+          "$py" native-wheel/package_304.py ipa-output/source293.ipa native-wheel/build/framework-304.zip "$target"
+          "$py" native-wheel/verify_endpoint290.py "$target" --report ipa-output/endpoint304-check.json
+          shasum -a 256 "$target" > ipa-output/Build304-SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Army2HoangGia-2.4.1-Build304-BattlefieldProfile-unsigned
+          path: |
+            ipa-output/Army2HoangGia-2.4.1-Build304-BattlefieldProfile-unsigned.ipa
+            ipa-output/Army2HoangGia-2.4.1-Build304-BattlefieldProfile-unsigned.validation.json
+            ipa-output/Army2HoangGia-2.4.1-Build304-BattlefieldProfile-unsigned.native-patch.json
+            ipa-output/endpoint304-check.json
+            ipa-output/Build304-SHA256SUMS.txt
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Army2HoangGia-Build304-framework-checks
+          path: |
+            native-wheel/build/framework-304.zip
+            native-wheel/build/test_*.txt
+          if-no-files-found: error
+          retention-days: 14
+  interface:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --no-save playwright
+      - run: npx playwright install --with-deps chromium
+      - run: node native-wheel/test_lobby.js
+      - run: node native-wheel/test_profile303.js
+      - run: node native-wheel/test_profile304.js
+      - run: node native-wheel/test_native_watch_ui.js
+
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Army2HoangGia-Build304-profile-screenshots
+          path: native-wheel/build/profile30*-*.png
+          if-no-files-found: warn
+          retention-days: 14

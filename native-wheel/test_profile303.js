@@ -86,7 +86,7 @@ assert.deepEqual(Profile.slots(sparse),[0,2,3,4]);assert.equal(Profile.move(spar
  const browser=await chromium.launch({args:['--no-sandbox'],executablePath:process.env.ARMY2_CHROMIUM});
  const page=await browser.newPage({viewport:{width:432,height:660},deviceScaleFactor:2});
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
- await page.addInitScript(()=>{window.sent=[];window.profileDiagnostics=[];window.webkit={messageHandlers:{lobby:{postMessage:a=>a[0]==='profileDiagnostic'?profileDiagnostics.push(a[1]):sent.push(a)}}};});
+ await page.addInitScript(()=>{window.sent=[];window.profileDiagnostics=[];window.profileIconRequests=[];window.webkit={messageHandlers:{lobby:{postMessage:a=>a[0]==='profileDiagnostic'?profileDiagnostics.push(a[1]):a[0]==='profileIcons'?profileIconRequests.push(a[1]):sent.push(a)}}};});
  await page.goto(viewerURL);
  await page.evaluate(()=>{const note=document.createElement('div');note.textContent='DỮ LIỆU KIỂM THỬ — KHÔNG PHẢI ACC THẬT';note.style.cssText='position:fixed;top:0;left:0;right:0;background:#173b58;color:white;text-align:center;font:12px sans-serif;padding:6px;pointer-events:none';document.body.append(note);});
  await page.evaluate(()=>{lobbyViewport(432,[432,0,0,0,0,0,0],602);openTab('field',0);});

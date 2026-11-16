@@ -6,7 +6,7 @@
 #include "CraftDiagnostics.h"
 #define INV_LIMIT 4096
 typedef struct { uint64_t key;int64_t quantity;uint8_t *item;int group,id,rank,fresh; } Entry;
-typedef struct { int count,open;uint64_t hash;uintptr_t screen;void *display;Entry *previous; } InventoryState;
+typedef struct { int count,open,known;uint64_t hash;uintptr_t screen,connection;void *display;Entry *previous; } InventoryState;
 static InventoryState inventories[6];
 static uint64_t key(const uint8_t *p){return p[0xbd]?(UINT64_C(1)<<63)|(uint64_t)*(const int64_t *)(p+0x80):(uint32_t)*(const int *)(p+0xb0);}
 static int group(const uint8_t *p){
@@ -27,11 +27,11 @@ static int grouped(const void *aa,const void *bb){
 static int updated(const void *aa,const void *bb){const Entry *a=aa,*b=bb;if(a->fresh!=b->fresh)return b->fresh-a->fresh;return a->rank-b->rank;}
 static uint64_t hashEntries(const Entry *p,int n){uint64_t h=1469598103934665603ULL;for(int i=0;i<n;i++){h=(h^p[i].key)*1099511628211ULL;h=(h^(uint64_t)p[i].quantity)*1099511628211ULL;h=(h^(uintptr_t)p[i].item)*1099511628211ULL;}return h;}
 /* Pure ordering step, shared by the native bridge and the regression fixture. */
-static int arrange(InventoryState *state,Entry *rows,int n,int reopening){
+static int arrange(InventoryState *state,Entry *rows,int n,int mode){
     uint64_t hash=hashEntries(rows,n);
-    if(!reopening&&state->count==n&&state->hash==hash)return 0;
+    if(!mode&&state->count==n&&state->hash==hash)return 0;
     if(!n)return 1;
-    if(reopening){qsort(rows,n,sizeof *rows,grouped);}
+    if(mode==1){qsort(rows,n,sizeof *rows,grouped);}
     else{
         for(int i=0;i<n;i++){
             const Entry *old=state->count?bsearch(&rows[i],state->previous,state->count,sizeof *rows,byKey):NULL;
@@ -61,6 +61,13 @@ void AGInventoryPrepareRecipe(void *e,void *m,int v){(void)e;(void)m;(void)v;}
 #include "InventoryMap.h"
 extern int AGWheelGuard(void *,int (*)(void *,void *),void *,void *);
 static uintptr_t base(void){return (uintptr_t)_dyld_get_image_header(0);}
+/* Original service singleton getters and connection field, six PBs. Merely
+   changing/reopening C6 does not start a new login session. */
+static uintptr_t inventoryConnection(int v){
+    static const uintptr_t slots[6]={0x207b870,0x20ab650,0x20d9350,0x2107040,0x2134d30,0x2162a20};
+    uint8_t *clazz=*(void **)(base()+slots[v]),*service=clazz?*(void **)(clazz+0xa0):NULL;
+    return service?*(uintptr_t *)(service+0x10):0;
+}
 static uint8_t *inventoryRoot(int v,uint8_t *screen){
     uint8_t *clazz=*(uint8_t **)(base()+inventoryMaps[v][2]);
     uint8_t *recipe=*(uint8_t **)(base()+recipeClasses[v]);
@@ -137,17 +144,25 @@ static int makeDisplay(void *e,void *opaque){
 void AGInventoryOrder(void *env,int v,uint8_t *canvas,uint8_t *screen,int active){
     if(v<0||v>=6)return;
     InventoryState *state=&inventories[v];
+    uintptr_t connection=inventoryConnection(v);
+    if(connection!=state->connection){
+        if(!env)return;
+        unpin(env,state->display);free(state->previous);
+        *state=(InventoryState){.connection=connection};
+    }
     if(!active){
         /* A recipe child is still the same chest session. */
         if(state->open&&state->screen&&(uintptr_t)screen!=state->screen&&
            (uintptr_t)inventoryRoot(v,screen)==state->screen)return;
         if(!state->open||!env)return;
         unpin(env,state->display);
-        free(state->previous);
-        *state=(InventoryState){0};
+        state->display=NULL;state->open=0;state->screen=0;
         return;
     }
     if(!env||!canvas||!screen)return;
+    if(state->open&&state->screen!=(uintptr_t)screen){
+        unpin(env,state->display);state->display=NULL;state->open=0;state->screen=0;
+    }
     /* Native C6.n rebinds +0x70 to the server vector even while a dialog is
        open. Restore the displayed order BEFORE deferring a rebuild; the
        callback's v() uses this same index several times during one tap. */
@@ -176,8 +191,8 @@ void AGInventoryOrder(void *env,int v,uint8_t *canvas,uint8_t *screen,int active
     if(pool(v)!=vec||elements(vec)!=array||*(int *)(vec+0x24)!=n)valid=0;
     for(int i=0;valid&&i<n;i++)if(objects[i]!=roots[i])valid=0;
     uint64_t hash=valid?hashEntries(rows,n):0;
-    int reopening=!state->open||state->screen!=(uintptr_t)screen;
-    int changed=valid?arrange(state,rows,n,reopening):0;
+    int reopening=!state->known;
+    int changed=valid?arrange(state,rows,n,reopening?1:!state->open?2:0):0;
     if(valid&&!changed&&state->display){
         // Native C6.n rebinds to the source every frame. Reuse our existing
         // display vector here, before the input and paint paths use it.
@@ -198,7 +213,7 @@ void AGInventoryOrder(void *env,int v,uint8_t *canvas,uint8_t *screen,int active
         if(ready){
             void *oldDisplay=state->display;
             state->display=display.vector;
-            state->open=1;state->screen=(uintptr_t)screen;
+            state->open=state->known=1;state->screen=(uintptr_t)screen;
             *(void **)(screen+0x70)=display.vector;
             index=0;
             int promoted=0,found=0;
@@ -210,6 +225,12 @@ void AGInventoryOrder(void *env,int v,uint8_t *canvas,uint8_t *screen,int active
                of the recipe callback. That callback calls native v() again
                when tapped, so changing index here silently changes its item. */
             if(reopening||!found)index=0;
+            /* A gem upgrade may leave some level7 gems in the stack. Show
+               the newly received level8 at the top after its result closes.
+               Recipe selection must remain bound to its existing callback. */
+            int64_t selectedID=old?*(int64_t *)(old+0x80):-1;
+            int recipeSelected=old&&old[0xbd]&&((selectedID>=69&&selectedID<=73)||(selectedID>=120&&selectedID<=129)||(selectedID>=238&&selectedID<=242));
+            if(promoted&&!recipeSelected)index=0;
             *(int *)(screen+0xc8)=index;
             *(void **)(screen+0x90)=n?rows[index].item:NULL;
             uint8_t *clazz=*(uint8_t **)screen;
