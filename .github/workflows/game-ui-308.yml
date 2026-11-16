@@ -57,7 +57,7 @@ jobs:
           from hashlib import sha256
           from zipfile import ZipFile
           source=Path('ipa-output/source293.ipa')
-          assert sha256(source.read_bytes()).hexdigest()=='3d308b2951c6a8540052d4d259d9308b56bcf9103cd5989e39bbf3301e136378'
+          assert sha256(source.read_bytes()).hexdigest()=='3d307b2951c6a8540052d4d259d9307b56bcf9103cd5989e39bbf3301e136378'
           with ZipFile(source) as z:
               Path('native-wheel/build/base293-native').write_bytes(z.read('Payload/Army2Hoanggia.app/Army2Hoanggia'))
           PY
