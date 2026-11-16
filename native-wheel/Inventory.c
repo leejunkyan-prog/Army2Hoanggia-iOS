@@ -2,11 +2,12 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdatomic.h>
 #include "Inventory.h"
 #include "CraftDiagnostics.h"
 #define INV_LIMIT 4096
 typedef struct { uint64_t key;int64_t quantity;uint8_t *item;int group,id,rank,fresh; } Entry;
-typedef struct { int count,open,known;uint64_t hash;uintptr_t screen,connection;void *display;Entry *previous; } InventoryState;
+typedef struct { int count,open,known;uint64_t hash;uintptr_t screen,connection;void *display;Entry *previous;unsigned login,notice; } InventoryState;
 static InventoryState inventories[6];
 static uint64_t key(const uint8_t *p){return p[0xbd]?(UINT64_C(1)<<63)|(uint64_t)*(const int64_t *)(p+0x80):(uint32_t)*(const int *)(p+0xb0);}
 static int group(const uint8_t *p){
@@ -55,6 +56,7 @@ void AGInventoryOrder(void *e,int v,uint8_t *c,uint8_t *s,int active){(void)e;(v
 void *AGInventoryResolve(void *e,void *p){(void)e;return p;}
 int AGInventoryGeometry(int v,int *out){(void)v;(void)out;return 0;}
 void AGInventoryPrepareRecipe(void *e,void *m,int v){(void)e;(void)m;(void)v;}
+void AGInventoryReceive(void *m,int v){(void)m;(void)v;}
 #else
 #include <mach-o/dyld.h>
 #include <pthread.h>
@@ -62,6 +64,25 @@ void AGInventoryPrepareRecipe(void *e,void *m,int v){(void)e;(void)m;(void)v;}
 #include "InventoryMap.h"
 extern int AGWheelGuard(void *,int (*)(void *,void *),void *,void *);
 static uintptr_t base(void){return (uintptr_t)_dyld_get_image_header(0);}
+static _Atomic unsigned logins[6],notices[6];
+/* Observe complete replies without consuming the original Java stream.
+   Cmd3 is a successful login even when the Session object is reused. Cmd45
+   replaces the pending confirmation/wait with an informational OK dialog;
+   the preceding cmd27 has already applied its inventory changes. */
+void AGInventoryReceive(void *message,int v){
+    if(!message||v<0||v>=6)return;
+    uint8_t *m=message;int command=*(int8_t *)(m+0x30);
+    if(command!=3&&command!=45)return;
+    uint8_t *in=*(uint8_t **)(m+0x20),*array=in?*(uint8_t **)(in+0x10):NULL;
+    if(!array)return;
+    int cap=*(int *)(array+0x10),end=*(int *)(in+0x18),pos=*(int *)(in+0x20);
+    if(pos<0||end<pos||end>cap)return;
+    if(command==3){if(end-pos>=23)atomic_fetch_add(&logins[v],1);}
+    else if(end-pos>=2){
+        const uint8_t *p=array+0x14+pos;int length=(p[0]<<8)|p[1];
+        if(length>0&&length==end-pos-2)atomic_fetch_add(&notices[v],1);
+    }
+}
 /* Original service singleton getters and connection field, six PBs. Merely
    changing/reopening C6 does not start a new login session. */
 static uintptr_t inventoryConnection(int v){
@@ -147,10 +168,11 @@ static void inventoryOrder(void *env,int v,uint8_t *canvas,uint8_t *screen,int a
     if(v<0||v>=6)return;
     InventoryState *state=&inventories[v];
     uintptr_t connection=inventoryConnection(v);
-    if(connection!=state->connection){
+    unsigned login=atomic_load(&logins[v]),notice=atomic_load(&notices[v]);
+    if(connection!=state->connection||login!=state->login){
         if(!env)return;
         unpin(env,state->display);free(state->previous);
-        *state=(InventoryState){.connection=connection};
+        *state=(InventoryState){.connection=connection,.login=login,.notice=notice};
     }
     if(!active){
         /* A recipe child is still the same chest session. */
@@ -175,7 +197,8 @@ static void inventoryOrder(void *env,int v,uint8_t *canvas,uint8_t *screen,int a
        hides every new gem until the chest is recreated. Use the actual menu
        visibility byte and the quantity-selection mode instead. */
     uint8_t *menu=*(uint8_t **)(canvas+0xe0);
-    if(*(void **)(canvas+0x108)||(menu&&menu[0x2c])||screen[0xd5])return;
+    int result=notice!=state->notice;
+    if((*(void **)(canvas+0x108)&&!result)||(menu&&menu[0x2c])||screen[0xd5])return;
     /* The render callback must never wait for the server Vector's Java
        monitor: its owner may itself be waiting for a render-thread task.
        Sort a private display vector and leave the server collection intact. */
@@ -230,12 +253,12 @@ static void inventoryOrder(void *env,int v,uint8_t *canvas,uint8_t *screen,int a
                of the recipe callback. That callback calls native v() again
                when tapped, so changing index here silently changes its item. */
             if(reopening||!found)index=0;
-            /* A gem upgrade may leave some level7 gems in the stack. Show
-               the newly received level8 at the top after its result closes.
-               Recipe selection must remain bound to its existing callback. */
+            /* APK promotes the result while its OK dialog is still visible
+               and keeps the source stack selected if any remains. Recipe
+               selection also stays bound to its existing callback. */
             int64_t selectedID=old?*(int64_t *)(old+0x80):-1;
             int recipeSelected=old&&old[0xbd]&&((selectedID>=69&&selectedID<=73)||(selectedID>=120&&selectedID<=129)||(selectedID>=238&&selectedID<=242));
-            if(promoted&&!recipeSelected)index=0;
+            if(promoted&&!recipeSelected&&!result)index=0;
             *(int *)(screen+0xc8)=index;
             *(void **)(screen+0x90)=n?rows[index].item:NULL;
             uint8_t *clazz=*(uint8_t **)screen;
@@ -245,6 +268,9 @@ static void inventoryOrder(void *env,int v,uint8_t *canvas,uint8_t *screen,int a
             if(n){Refresh job={v,screen};AGWheelGuard(env,refresh,&job,(void *)(base()+0x1300d54));}
         }else unpin(env,display.vector);
     }
+    /* One result permits one snapshot, not a later confirmation. If Java
+       allocation failed, retain the permit and retry on the next paint. */
+    if(valid&&(!changed||state->hash==hash))state->notice=notice;
     free(rows);
 }
 /* Rebind in place before the original callback calls v() again. The recipe
