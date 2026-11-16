@@ -34,6 +34,14 @@ with tempfile.TemporaryDirectory() as folder:
  lib=ctypes.CDLL(str(target));expand=lib.AGCostumeExpandRGBA
  expand.argtypes=[ctypes.c_int,ctypes.c_void_p,ctypes.c_int,ctypes.c_int,ctypes.c_int,ctypes.POINTER(ctypes.c_void_p),ctypes.POINTER(ctypes.c_int)]
  free=ctypes.CDLL(None).free;free.argtypes=[ctypes.c_void_p]
+ palette=lib.AGCostumeSheetPalette
+ palette.argtypes=[ctypes.c_int,ctypes.c_int,ctypes.c_void_p,ctypes.c_int,ctypes.c_int,ctypes.POINTER(ctypes.c_uint32),ctypes.POINTER(ctypes.c_uint32)]
+ # Unknown server style1 uses the exact encounter-order dominant-color rule.
+ colors=[(180,50,30,255),(220,110,65,255),(180,50,30,255),(255,255,255,255)]
+ sample=bytes(16)+b''.join(bytes(p) for p in colors);buf=ctypes.create_string_buffer(sample);a=ctypes.c_uint32();b=ctypes.c_uint32()
+ assert palette(0,1,buf,2,4,ctypes.byref(a),ctypes.byref(b))==1
+ assert a.value==b.value==((180<<16)|(60<<8)|36)
+ assert palette(0,0,buf,2,4,ctypes.byref(a),ctypes.byref(b))==0
  for hero in range(10):
   im=Image.open(BytesIO(ref.images[hero+1])).convert('RGBA');source=im.tobytes();buffer=ctypes.create_string_buffer(source)
   chosen=[s for h,s in palettes if h==hero];ptr=ctypes.c_void_p();height=ctypes.c_int()

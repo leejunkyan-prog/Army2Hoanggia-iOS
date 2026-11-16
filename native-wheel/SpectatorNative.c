@@ -10,6 +10,7 @@
 #include "ReturnDiagnostics.h"
 #include "CanvasRecovery.h"
 #include "CraftDiagnostics.h"
+#include "CostumeEffects.h"
 #ifdef AG_WHEEL_PREVIEW
 int AGNativeWatchAvailable(void){return 0;}
 int AGNativeWatchFree(int v){return 0;}
@@ -616,6 +617,9 @@ void AGNativeWatchRenderFrame(void *e,int v){
     /* A render Env belongs to the attached game thread. Never call native
        Java routines from UIKit timers or reuse another thread's Env. */
     AGViewerTick(e,v);
+#if defined(AG_RETURN_BUILD) && AG_RETURN_BUILD >= 306
+    AGCostumeRender(e,v);
+#endif
     AGCanvasRecoveryFrame(e,v,AGViewerStillWatching(v)||AGNativeWatchRunning(v));
     if(!AGViewerStillWatching(v)||!AGNativeWatchRunning(v))return;
     AGNativeWatchTraceRender(v,0);

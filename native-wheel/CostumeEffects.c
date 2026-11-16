@@ -32,6 +32,24 @@ uint32_t AGCostumeTint(uint32_t rgba,uint32_t primary,uint32_t secondary){
   c=c*(luminance*165/255+90)/255;if(luminance>235)c=(c*7+255)/8;out|=(uint32_t)c<<(24-i*8);
  }return out;
 }
+/* ShotFx122 also supports server-defined styles: derive its dominant color
+   from the first frame, in the same encounter order and 24-level buckets. */
+int AGCostumeSheetPalette(int hero,int style,const uint8_t *rgba,int width,int height,uint32_t *a,uint32_t *b){
+ if(!rgba||!a||!b||hero<0||hero>9||style<=0||width<1||width>128||height<1)return 0;
+ int block=width*(hero==2?2:hero==5?4:1);if(style>=height/block)return 0;
+ if(AGCostumePalette(hero,style,a,b))return 1;
+ unsigned keys[2048],counts[2048]={0};int n=0,best=-1;
+ const uint8_t *p=rgba+(size_t)style*block*width*4;
+ for(int i=0;i<width*width;i++,p+=4){
+  int max=p[0]>p[1]?p[0]:p[1];if(p[2]>max)max=p[2];
+  int min=p[0]<p[1]?p[0]:p[1];if(p[2]<min)min=p[2];
+  if(p[3]<160||max<35||min>235)continue;
+  unsigned key=(p[0]/24<<8)|(p[1]/24<<4)|(p[2]/24);int j=0;
+  while(j<n&&keys[j]!=key)j++;if(j==n){if(n==2048)return 0;keys[n++]=key;}
+  counts[j]++;if(best<0||counts[j]>counts[best])best=j;
+ }
+ if(best<0)return 0;unsigned k=keys[best];*a=*b=((((k>>8)&15)*24+12)<<16)|((((k>>4)&15)*24+12)<<8)|((k&15)*24+12);return 1;
+}
 int AGCostumeExpandRGBA(int hero,const uint8_t *source,int width,int height,int minStyle,uint8_t **out,int *outHeight){
  if(!out||!outHeight)return 0;*out=NULL;*outHeight=0;
  if(hero<0||hero>9||!source||width<1||width>128||height<1||height>16384||minStyle<0||minStyle>127)return 0;

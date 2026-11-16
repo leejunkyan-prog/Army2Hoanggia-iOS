@@ -10,7 +10,7 @@ xcrun --sdk iphoneos clang -arch arm64 -isysroot "$sdk" -miphoneos-version-min=1
  -Wno-unused-parameter -Wno-deprecated-declarations -Wno-unused-function \
  -framework UIKit -framework Foundation -framework QuartzCore -framework CoreGraphics -framework WebKit \
  -Wl,-headerpad,4000 -Wl,-install_name,@rpath/AGWheel.framework/AGWheel \
- AGWheel.m CostumeEffects.c CostumeNative.m ReturnDiagnostics.m ThreadDiagnostics.m CanvasRecovery.c CraftDiagnostics.c Spectator.m SpectatorNative.c WatchTrace.c WatchSurface.m Lobby.m GameViewport.m GridLayout.c Inventory.c Turn33.c UfoAuto.c Notes77.m NotesProtocol.c WheelProtocol.c RoomNames.c RoomBridge.c Movement.c Blind.c BlindState.c Aura.c AuraSprites.m AuraState.c BattleWait.c Corpse.c Stats.c ShipTraceDisabled.c BossMaps.c BossNative.m NativeGuard.S \
+ AGWheel.m CostumeEffects.c CostumeNative.m CostumeShots.c CostumeImage.m ReturnDiagnostics.m ThreadDiagnostics.m CanvasRecovery.c CraftDiagnostics.c Spectator.m SpectatorNative.c WatchTrace.c WatchSurface.m Lobby.m GameViewport.m GridLayout.c Inventory.c Turn33.c UfoAuto.c Notes77.m NotesProtocol.c WheelProtocol.c RoomNames.c RoomBridge.c Movement.c Blind.c BlindState.c Aura.c AuraSprites.m AuraState.c BattleWait.c Corpse.c Stats.c ShipTraceDisabled.c BossMaps.c BossNative.m NativeGuard.S \
  -o build/QA/AGWheel.framework/AGWheel
 codesign --force --sign - --timestamp=none build/QA/AGWheel.framework/AGWheel
 codesign --verify --strict --verbose=2 build/QA/AGWheel.framework/AGWheel
