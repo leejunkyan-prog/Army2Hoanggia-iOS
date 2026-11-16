@@ -345,10 +345,9 @@ function drawProfile(){ui.classicPixels((width,height)=>{
  const sx=[40,15,65,55,25],sy=[33,55,55,83,83];
  for(let i=0;i<5;i++){
   ui.roundRect(x+sx[i]-10,y+sy[i]-10,20,20,'#3f6c9b',2);
-  const gear=ArmyProfile.item(r,i);
+  const gear=ArmyProfile.item(r,i),visual=r.avatar.parts[i];
+  if(visual>=0)ui.gearIcon(r.avatar.character,i,visual,x+sx[i],y+sy[i],16,visual===gear?.id?r.icons?.[i]:null,true);
   if(gear&&gear.id>=0){
-   const visual=r.avatar.parts[i];
-   if(visual>=0)ui.gearIcon(r.avatar.character,i,visual,x+sx[i],y+sy[i],16,visual===gear.id?r.icons?.[i]:null,true);
    if(profileFocus===i){ui.g.strokeStyle='#ffd34e';ui.g.lineWidth=1;ui.g.strokeRect(x+sx[i]-10.5,y+sy[i]-10.5,21,21);}
    ui.zone(x+sx[i]-10,y+sy[i]-10,20,20,()=>{if(profileFocus===i)profileDetails();else profileFocus=i;});
   }

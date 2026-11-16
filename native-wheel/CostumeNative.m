@@ -3,6 +3,7 @@
 #include <pthread.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include "CostumeEffects.h"
 #include "ProfileIcons.h"
 #include "TurnMap.h"
@@ -12,7 +13,7 @@ extern int AGCostumeVariantStyle(int,int,int,int);
 extern int AGCostumePalette(int,int,uint32_t *,uint32_t *);
 static const uintptr_t catalogs[6]={0x207fa20,0x20af620,0x20dd320,0x210b010,0x2138d00,0x21669f0};
 static pthread_mutex_t fxMutex=PTHREAD_MUTEX_INITIALIZER;
-static struct {uintptr_t source,prepared;int failed;} sheets[6][10];
+static struct {uintptr_t source,prepared;int failed;double attempted;} sheets[6][10];
 static struct {uintptr_t actor,outfit;int original,applied,head;} actors[6][24];
 static uintptr_t fxBase(void){return (uintptr_t)_dyld_get_image_header(0);}
 static int guarded(void *env,int (*fn)(void *,void *),void *job){return AGWheelGuard(env,fn,job,(void *)(fxBase()+0x1300d54));}
@@ -58,10 +59,11 @@ static int installImage(void *env,void *opaque){
 /* Preserve real rows. Missing costume rows use ShotFx122's exact palette and
    luminance arithmetic; physics, trajectory and damage stay in native code. */
 static int prepare(void *env,FXJob *j){
- NSData *png=nil;uint32_t tintA,tintB;
+ __attribute__((objc_precise_lifetime)) NSData *png=nil;uint32_t tintA,tintB;
  int v=j->v,h=j->hero;if(!AGCostumePalette(h,j->style,&tintA,&tintB))return 0;
- if(sheets[v][h].failed&&(uintptr_t)j->source==sheets[v][h].source)return 0;
- sheets[v][h].source=(uintptr_t)j->source;sheets[v][h].failed=1;
+ struct timespec now;clock_gettime(CLOCK_MONOTONIC,&now);double time=now.tv_sec+now.tv_nsec/1e9;
+ if(sheets[v][h].failed&&(uintptr_t)j->source==sheets[v][h].source&&time<sheets[v][h].attempted+2)return 0;
+ sheets[v][h].source=(uintptr_t)j->source;sheets[v][h].failed=1;sheets[v][h].attempted=time;
  if(guarded(env,rootImages,j)<=0)goto failed;
  int w=*(int *)(j->source+0x20),oldH=*(int *)(j->source+0x24);uint8_t *source=NULL,*pixels=NULL;int height=0;
  if(w<1||w>128||oldH<1||oldH>16384)goto failed;
@@ -108,7 +110,7 @@ void AGCostumePaint(void *env,uint8_t *actor,int v){
 typedef struct {int v;uint8_t *array;} Roster;
 static int roster(void *env,void *opaque){
  Roster *j=opaque;uintptr_t b=fxBase();uint8_t *canvas=*(void **)(b+AGNotesMaps[j->v].canvas),*arena=*(void **)(b+AGTurnMaps[j->v].arena_class),*g=*(void **)(b+AGTurnMaps[j->v].array_class);
- if(!canvas||!arena||!g||*(void **)(canvas+0xb8)!=*(void **)(arena+0xe8))return 0;
+ if(!canvas||!arena||!g||!*(void **)(arena+0xe8)||*(void **)(canvas+0xb8)!=*(void **)(arena+0xe8))return 0;
  j->array=*(void **)(g+0xa0);return j->array&&*(int *)(j->array+0x10)>0&&*(int *)(j->array+0x10)<=24;
 }
 void AGCostumeTick(void *env,int v){

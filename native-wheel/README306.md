@@ -2,6 +2,8 @@
 
 The supplied APK uses one scrolling ranking list, native-sized cards and a pinned self card. This build follows its 50-pixel row geometry at native width432, gap row, rank badges, profile card centering and idle poses4/5. Appearance slot icons are resolved separately from the stat-bearing worn items.
 
+The body image has ten frames, confirmed by executing the original AOT Outfit.draw. The former divide-by5 portrait reader was corrected to divide-by10.
+
 Two icon defects were found with the supplied equipment export: the web catalog parser skipped49 bytes where the original format contains59 bytes; and native profile extraction consulted a generic downloaded-image cache instead of the equipment screen's complete icon sheet at pool+0xb0. The fixture includes the unchanged public export with1556 templates, actual icon PNG and ten projectile sheets.
 
 Costume shot styles follow all375 records in ShotFx122.DATA in the supplied APK. Optional live FX49 metadata overrides these records. Existing projectile pixels remain intact. Missing mapped rows use the exact APK luminance/palette calculation. The native actor's visual style word at+0x104 is updated before native shot handling; removing the costume restores the original weapon style. No damage, trajectory, server endpoint or packet body is rewritten. Costume306-diagnostic.json records numeric style/binding events.

@@ -13,6 +13,7 @@ root=Path(__file__).parent
 art=json.loads(re.search(r'= (\{.*\});',(root/'viewer/art.js').read_text()).group(1))
 raw=(root/'build/base293-native').read_bytes()
 t.u.mem_write(t.B+0x5ba510,raw[0x5ba510:0x5ba914])
+t.u.mem_write(t.B+0x515100,raw[0x515100:0x5157d0])
 t.u.mem_write(t.B+0x1461ca0,raw[0x1461ca0:0x1461cc0])
 catalogs=(0x207fa20,0x20af620,0x20dd320,0x210b010,0x2138d00,0x21669f0)
 actors=(0x2091b80,0x20c0670,0x20ee360,0x211c050,0x2149d40,0x2177a30)
@@ -27,7 +28,7 @@ for hero in range(10):
  atlas=Image.open(root/f'viewer/art/hero{hero}.png').convert('RGBA')
  atlas=atlas.crop((0,0,max(r[0]+r[2] for r in rects),max(r[1]+r[3] for r in rects)))
  body=Image.open(root/f'viewer/art/base{hero}.png').convert('RGBA')
- strip=Image.new('RGBA',(body.width,body.height*5));strip.paste(body,(0,0))
+ strip=Image.new('RGBA',(body.width,body.height*10));strip.paste(body,(0,0))
  body_images.append(native_image(strip));atlas_images.append(native_image(atlas));rectangles.append(rects)
  ids=[300+hero*5+s for s in range(5)];parts.append(ids)
  assert all(f'{hero}:{s}:{id}' not in art['gear'] for s,id in enumerate(ids))
@@ -41,6 +42,10 @@ for hero in range(10):
 atlas_array=objects(atlas_images);body_array=objects(body_images);draws=[]
 def hook(u,pc,size,_):
  if pc==t.B+0x5146fc:t.ret(atlas_array)
+ elif pc==t.B+0x592bdc:t.ret(body_array)
+ elif pc==t.B+0x1c61b0:t.ret(t.get(t.reg(1)+0x20,'<i'))
+ elif pc==t.B+0x1c61a0:t.ret(t.get(t.reg(1)+0x24,'<i'))
+ elif pc==t.B+0x12e76d8:t.ret()
  elif pc==t.B+0x1c6150:
   sp=u.reg_read(UC_ARM64_REG_SP);draws.append((t.reg(2),*[t.reg(k)&0xffffffff for k in range(3,7)],t.get(sp,'<i'),t.get(sp+4,'<i')));t.ret()
 t.u.hook_add(UC_HOOK_CODE,hook)
@@ -64,6 +69,16 @@ for v in range(6):
   h=t.alloc(0x20);t.put(h+0x1a,'<b',hero);t.put(h+0x10,'<Q',t.vector(slots));heroes.append(h)
  t.put(c+0xb0,'<Q',t.vector(heroes))
  for hero in range(10):
+  # Execute the original complete Outfit.draw, not an assumed body stride.
+  outfit=t.alloc(0x20);slots=t.get(heroes[hero]+0x10,'<Q');slotArray=t.get(slots+0x18,'<Q');templates=[]
+  for slot in range(5):
+   slotObject=t.get(slotArray+0x18+slot*8,'<Q');vec=t.get(slotObject+0x10,'<Q');templates.append(t.get(t.get(vec+0x18,'<Q')+0x18,'<Q'))
+  t.put(outfit+0x10,'<Q',objects(templates));draws.clear();previous=t.get(t.E+0x38,'<Q')
+  t.u.reg_write(UC_ARM64_REG_SP,t.S+0x30000);t.u.reg_write(UC_ARM64_REG_LR,t.STOP)
+  for i,arg in enumerate((t.E,outfit,t.alloc(0x60),0,0,40,64)):t.u.reg_write(t.regs[i],arg)
+  t.u.emu_start(t.B+0x515100,t.STOP+4,count=200000);assert t.u.reg_read(UC_ARM64_REG_PC)==t.STOP
+  bodyDraw=next(row for row in draws if row[0]==body_images[hero]);assert bodyDraw[4]==t.get(body_images[hero]+0x24,'<i')//10
+  assert len(draws)==6;t.put(t.E+0x38,'<Q',previous)
   p=t.alloc(20);t.u.mem_write(p,struct.pack('<5i',*parts[hero]));out=t.alloc(24)
   assert t.call('_AGProfileAvatarRead',t.E,v,hero,p,out)==1,(v,hero)
   assert (t.get(out+4,'<i'),t.get(out+8,'<i'))==(80,80)
@@ -73,4 +88,4 @@ for v in range(6):
   # A missing character/template must not borrow another hero's equipment.
   t.put(p,'<i',9999);assert t.call('_AGProfileAvatarRead',t.E,v,hero,p,out)==0
 assert all(n==0 for n in t.pins.values())
-print('PASS avatar305: ten heroes across six PBs, original AOT piece painter placements (300 draws), exact live-catalog fixture IDs absent from static metadata, real bundled sprite pixels vs independent Pillow composition, complete pose facing right, missing template rejected and balanced JNI roots')
+print('PASS avatar305: ten heroes across six PBs, original complete AOT Outfit.draw and its ten-frame body stride, plus piece placements (300 draws), exact live-catalog fixture IDs absent from static metadata, real bundled sprite pixels vs independent Pillow composition, complete pose facing right, missing template rejected and balanced JNI roots')

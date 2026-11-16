@@ -143,7 +143,9 @@ int AGProfileAvatarPoseRead(void *env,int v,int hero,const int parts[5],int pose
  if(!env||v<0||v>=6||hero<0||hero>9||!parts||pose<0||pose>5||(mode!=0&&mode!=2))return 0;
  NAvatarJob j={.variant=v,.hero=hero,.pose=pose};for(int i=0;i<5;i++){if(parts[i]<-1||parts[i]>32767)return 0;j.parts[i]=parts[i];}
  if(NRun(env,NAvatarInfo,&j)<=0)return 0;
- int bw=*(int *)(j.body+0x20),bh=*(int *)(j.body+0x24)/5;
+ /* Original Outfit.draw uses signed divide-by10 (AOT515490: ASR #34),
+    matching the supplied APK. Reading two body frames breaks the portrait. */
+ int bw=*(int *)(j.body+0x20),bh=*(int *)(j.body+0x24)/10;
  if(bw<1||bw>64||bh<1||bh>64)return 0;
  /* j5_.draw uses the character's equipment anchor, not the body PNG bounds. */
  int ew=hero==3?30:hero==6?29:hero==7?32:24,eh=hero==3||hero==7?32:24;
@@ -152,7 +154,7 @@ int AGProfileAvatarPoseRead(void *env,int v,int hero,const int parts[5],int pose
  for(int n=0;n<6;n++){
   int s=order[n];AGProfileIcon region={.status=6,.iconID=-1};
   if(s==5){
-   if(!NReadImageRegion(env,j.body,0,(pose<5?pose:4)*bh,bw,bh,-1,&region))goto failed;
+   if(!NReadImageRegion(env,j.body,0,pose*bh,bw,bh,-1,&region))goto failed;
    NAvatarBlit(out->rgba,&region,40-bw/2-(mode==2&&(bw&1)),64-bh,mode==2);
   }else{
    int *r=j.rect[s];if(j.parts[s]<0||r[2]==0||r[3]==0)continue;
