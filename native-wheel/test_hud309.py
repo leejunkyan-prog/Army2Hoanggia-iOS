@@ -7,6 +7,7 @@ the actual iPhone ARM64 framework.
 from pathlib import Path
 import struct
 from unicorn import UC_HOOK_CODE
+from unicorn.arm64_const import UC_ARM64_REG_PC,UC_ARM64_REG_SP
 import test_inventory_device282 as t
 from patch_hud309 import patch_native,offset,BARS,pair,memory,move,imm
 
@@ -17,11 +18,13 @@ for a,b in ((0x24f8000,0x2500000),(0x2500000,0x250c000)):
  t.u.mem_write(t.B+a,patched[offset(a):offset(b-1)+1])
 font_get=[0x5c112c,0x6a8f50,0x78dc14,0x8728d8,0x95759c,0xa3c260]
 font_draw=[0x5c3e64,0x6abc88,0x79094c,0x875610,0x95a2d4,0xa3ef98]
+font_width=[0x5c4054,0x6abe50,0x790b14,0x8757d8,0x95a49c,0xa3f160]
+for address in font_width:assert raw[address:address+44]==raw[font_width[0]:font_width[0]+44],'Width must enter the actual native method prologue'
 arena_slots=[0x2082e30,0x20b23a0,0x20e0090,0x210dd80,0x213ba70,0x2169760]
 roster_slots=[0x207f060,0x20aec70,0x20dc970,0x210a660,0x2138350,0x2166040]
 actor_slots=[0x2091b80,0x20c0670,0x20ee360,0x211c050,0x2149d40,0x2177a30]
 service_slots=[0x207b870,0x20ab650,0x20d9350,0x2107040,0x2134d30,0x2162a20]
-strings={};labels=[];images=[];fills=[];colors=[];frames=[];native_calls=[];tls={};next_key=0;paint_count=0;original=t.F+0x31000;canvas_original=t.F+0x31200
+strings={};labels=[];images=[];fills=[];colors=[];frames=[];native_calls=[];tls={};once_done=set();next_key=0;paint_count=0;original=t.F+0x31000;canvas_original=t.F+0x31200
 font=t.alloc(0x40);fake_tint=t.alloc(0x40);pow_image=t.alloc(0x40);body=t.alloc(0x40)
 t.put(body+0x20,'<ii',35,32);t.put(pow_image+0x20,'<ii',41,188)
 NEWSTRING=t.F+0x31300;DELETE=t.F+0x31400;t.put(t.JNI+163*8,'<Q',NEWSTRING);t.put(t.JNI+23*8,'<Q',DELETE)
@@ -33,7 +36,7 @@ def hook(u,pc,size,_):
   text=bytes(u.mem_read(t.reg(1),t.reg(2)*2)).decode('utf-16-le','surrogatepass');p=t.alloc(0x30);strings[p]=text;t.ret(p)
  elif pc==DELETE:strings.pop(t.reg(1),None);t.ret()
  elif pc in [t.B+x for x in font_get]:t.ret(font)
- elif pc in [t.B+x+0x1f0 for x in font_draw]:t.ret(len(strings[t.reg(2)])*6)
+ elif pc in [t.B+x for x in font_width]:t.ret(len(strings[t.reg(2)])*6)
  elif pc in [t.B+x for x in font_draw]:labels.append((strings[t.reg(3)],s32(t.reg(4)),s32(t.reg(5)),t.reg(6)));t.ret()
  elif pc==t.B+0x1c619c:
   g=t.reg(1);t.put(g+0x48,'<ii',t.get(g+0x48,'<i')+s32(t.reg(2)),t.get(g+0x4c,'<i')+s32(t.reg(3)));t.put(g+0x50,'<B',1);t.ret()
@@ -53,29 +56,25 @@ def hook(u,pc,size,_):
   paint_count+=1;native_calls.append(('actor',t.reg(1)))
  elif pc==t.B+0x131cf70:
   name=bytes(u.mem_read(t.reg(1),80)).split(b'\0')[0].decode();t.ret(t.symbols.get('_'+name,0))
- elif pc in t.imports:
-  name=t.imports[pc]
-  if name=='_pthread_once':
-   if not t.get(t.reg(0),'<Q'):t.put(t.reg(0),'<Q',1);u.reg_write(t.regs[0],0);u.reg_write(260,t.reg(1))
-   else:t.ret()
-  elif name=='_pthread_key_create':t.put(t.reg(0),'<I',next_key);next_key+=1;t.ret()
-  elif name=='_pthread_getspecific':t.ret(tls.get(t.reg(0),0))
-  elif name=='_pthread_setspecific':tls[t.reg(0)]=t.reg(1);t.ret()
 t.u.hook_add(UC_HOOK_CODE,hook)
 # Avoid replacing the harness's existing import hook: teach it POSIX TLS by
 # removing only these imports from its dictionary and handling them above.
-tls_imports={a:n for a,n in t.imports.items() if n in ('_pthread_once','_pthread_key_create','_pthread_getspecific','_pthread_setspecific')}
+tls_imports={a:n for a,n in t.imports.items() if n in ('_pthread_once','_pthread_key_create','_pthread_getspecific','_pthread_setspecific','_snprintf')}
 for a in tls_imports:del t.imports[a]
 def posix(u,pc,size,_):
  global next_key
  name=tls_imports.get(pc)
  if name=='_pthread_once':
-  if not t.get(t.reg(0),'<Q'):
-   t.put(t.reg(0),'<Q',1);u.reg_write(t.regs[0],0);u.reg_write(t.regs[16],t.reg(1));u.reg_write(260,t.reg(1))
+  if t.reg(0) not in once_done:
+   once_done.add(t.reg(0));u.reg_write(UC_ARM64_REG_PC,t.reg(1))
   else:t.ret()
  elif name=='_pthread_key_create':t.put(t.reg(0),'<I',next_key);next_key+=1;t.ret()
  elif name=='_pthread_getspecific':t.ret(tls.get(t.reg(0),0))
  elif name=='_pthread_setspecific':tls[t.reg(0)]=t.reg(1);t.ret()
+ elif name=='_snprintf':
+  fmt=bytes(u.mem_read(t.reg(2),16)).split(b'\0')[0];assert fmt==b'%lld/%d'
+  sp=u.reg_read(UC_ARM64_REG_SP);text=f"{t.get(sp,'<q')}/{t.get(sp+8,'<i')}".encode()
+  assert len(text)<t.reg(1);u.mem_write(t.reg(0),text+b'\0');t.ret(len(text))
 t.u.hook_add(UC_HOOK_CODE,posix)
 def mutf(s):return struct.pack('>H',len(s.encode()))+s.encode()
 def receive(v,cmd,data,prefix=b'abc'):
@@ -123,9 +122,12 @@ for v in range(6):
   labels.clear();native_calls.clear();before=bytes(t.u.mem_read(p,0x200))
   assert t.call('_AGRankPaintActor',t.E,p,g,v,original)==1
   assert ('actor',p) in native_calls and labels[0][0]==title and labels[1][0]=='43960/43960'
+  assert labels[0][1:]==(200,256,2) and labels[1][1:]==(200,225,2),'Rank labels must follow actual native sprite bounds'
+  assert ('tint',body,rank,0,0) in native_calls,'Only body images enter the rank tint'
   assert bytes(t.u.mem_read(p,0x200))==before
   assert bytes(t.u.mem_read(g+0x28,0x2c))==saved and all(not x for x in tls.values())
   assert any(x[0]=='tint' and x[1]==pow_image and x[2]==rank for x in native_calls)
+  labels.clear();t.call('_AGAuraPaintActor',t.E,p,g,v,original);assert labels[0][0]==title,'Existing production actor bridge must reach the new ranked painter'
   t.put(p+0x68,'<q',12345);labels.clear();t.call('_AGRankPaintActor',t.E,p,g,v,original);assert labels[-1][0]=='12345/43960'
   t.put(p+0x68,'<q',0);assert not t.call('_AGRankPaintActor',t.E,p,g,v,original)
   t.put(p+0x68,'<q',43960)

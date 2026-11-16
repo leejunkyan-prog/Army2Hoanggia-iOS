@@ -59,13 +59,16 @@ static void translate(void *e,uint8_t *g,int x,int y){((void (*)(void *,void *,i
 static void clip(void *e,uint8_t *g,int x,int y,int w,int h){((void (*)(void *,void *,int,int,int,int))(base()+0x1c6190))(e,g,x,y,w,h);}
 static void restore(void *e,uint8_t *g,GraphicsState s){translate(e,g,s.tx-(g[0x50]?*(int *)(g+0x48):0),s.ty-(g[0x50]?*(int *)(g+0x4c):0));clip(e,g,s.x-s.tx,s.y-s.ty,s.w,s.h);memcpy(g+0x28,s.color,16);}
 static void *font(void *e,int v){return ((void *(*)(void *))(base()+AGNotesMaps[v].font_get+0x3c))(e);}
+/* PB1's font painter is 40 bytes longer. Width is a separate audited entry,
+   not a fixed offset from the painter shared by the other five PBs. */
+static const uintptr_t fontWidths[6]={0x5c4054,0x6abe50,0x790b14,0x8757d8,0x95a49c,0xa3f160};
 static void draw(void *e,int v,uint8_t *g,void *f,void *s,int x,int y,int anchor){((void (*)(void *,void *,void *,void *,int,int,int))(base()+AGNotesMaps[v].font))(e,f,g,s,x,y,anchor);}
 static void label(void *e,int v,uint8_t *g,void *f,const uint16_t *text,int n,int x,int y){void **jni=*(void ***)e;void *s=((void *(*)(void *,const uint16_t *,int))jni[163])(e,text,n);if(s){draw(e,v,g,f,s,x,y,2);((void (*)(void *,void *))jni[23])(e,s);}}
 typedef struct {int v,width,height,travel;uint64_t serial;size_t length;uint8_t *g;uint16_t text[];} MarqueePaint;
 static int marquee(void *env,void *opaque){
  MarqueePaint *j=opaque;void **jni=*(void ***)env;void *f=font(env,j->v);if(!f)return 0;
  void *text=((void *(*)(void *,const uint16_t *,int))jni[163])(env,j->text,(int)j->length);if(!text)return 0;
- int width=((int (*)(void *,void *,void *))(base()+AGNotesMaps[j->v].font+0x1f0))(env,f,text);
+ int width=((int (*)(void *,void *,void *))(base()+fontWidths[j->v]))(env,f,text);
  if(width>=0&&j->travel>=(int64_t)width+j->width){pthread_mutex_lock(&lock);HUDState *s=&states[j->v];if(s->serial==j->serial)s->length=0;pthread_mutex_unlock(&lock);}
  else{GraphicsState old=save(j->g);translate(env,j->g,-old.tx,-old.ty);clip(env,j->g,0,0,j->width,j->height<17?j->height:17);draw(env,j->v,j->g,f,text,j->width-j->travel,1,0);restore(env,j->g,old);}
  ((void (*)(void *,void *))jni[23])(env,text);return 1;
