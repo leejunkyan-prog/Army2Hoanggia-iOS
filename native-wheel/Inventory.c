@@ -170,9 +170,12 @@ static void inventoryOrder(void *env,int v,uint8_t *canvas,uint8_t *screen,int a
        callback's v() uses this same index several times during one tap. */
     if(state->open&&state->screen==(uintptr_t)screen&&state->display)
         *(void **)(screen+0x70)=state->display;
-    /* Freeze positions while menus, amount entry and craft/result dialogs
-       are open. Resolve refreshed server handles at action time below. */
-    if(*(void **)(canvas+0x108)||screen[0xd4]||screen[0xd5])return;
+    /* +0xd4 is containsConsumables, set by the native bulk-combine callback
+       and retained after its reply. It is not menu visibility: freezing on it
+       hides every new gem until the chest is recreated. Use the actual menu
+       visibility byte and the quantity-selection mode instead. */
+    uint8_t *menu=*(uint8_t **)(canvas+0xe0);
+    if(*(void **)(canvas+0x108)||(menu&&menu[0x2c])||screen[0xd5])return;
     /* The render callback must never wait for the server Vector's Java
        monitor: its owner may itself be waiting for a render-thread task.
        Sort a private display vector and leave the server collection intact. */
@@ -356,6 +359,7 @@ int AGInventoryCraftInspect(int v,void *opaque,int64_t d[CF_COUNT]){
 }
 #endif
 #endif
+
 
 
 

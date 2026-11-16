@@ -21,7 +21,14 @@ created=[];released=[];writes=[]
 def hook(u,pc,size,_):
     if pc==NEW:
         text=bytes(u.mem_read(t.reg(1),t.reg(2)*2)).decode('utf-16-le')
-        assert text=='Sự kiện';p=t.alloc(0x30);created.append(p);t.ret(p)
+        assert text=='SỰ KIỆN'
+        # Exercise the atlas contract too: the previous mixed-case title
+        # passed JNI tests but its unsupported glyphs rendered as just S.
+        import re
+        atlas=(Path(__file__).parent/'PixelFonts.h').read_text()
+        chars=re.search(r'AGTitleChars = @"([^"]+)"',atlas).group(1)
+        assert all(c in chars for c in text)
+        p=t.alloc(0x30);created.append(p);t.ret(p)
     elif pc==RELEASE:released.append(t.reg(1));t.ret()
     elif pc==SET:
         a,i,value=t.reg(1),t.reg(2),t.reg(3)
@@ -53,4 +60,5 @@ for v,slot in enumerate(slots):
 assert t.call('_AGEventMenuTitle',0,0)==0 and t.call('_AGEventMenuTitle',t.E,6)==0
 assert len(created)==len(released)==6 and len(writes)==12
 assert all(n==(1 if p in created else 0) for p,n in t.pins.items())
-print('PASS compiled native event title: six AOT-audited PB class slots, exact Unicode Sự kiện, only ranking row3 changed, replacement arrays, invalid bounds, no repeated JNI work, balanced array roots')
+print('PASS compiled native event title: six AOT-audited PB class slots, SỰ KIỆN with every glyph in the native title atlas, only ranking row3 changed, replacement arrays, invalid bounds, no repeated JNI work, balanced array roots')
+

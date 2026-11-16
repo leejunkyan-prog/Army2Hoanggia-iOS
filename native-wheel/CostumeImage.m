@@ -16,12 +16,12 @@ static int make(void *env,void *opaque){
  ((void (*)(void *,void *))jni[23])(env,bytes);return j->result!=NULL;
 }
 void *AGCostumeImage(void *env,void *source,void *sheet,int hero,int style,int frames){
- if(!env||!source||!sheet||hero<0||hero>9||style<=0||style>127||(frames!=0&&frames!=4))return NULL;
+ if(!env||!source||!sheet||hero<0||hero>9||style<=0||style>127||(frames!=0&&frames!=1&&frames!=4))return NULL;
  for(int i=0;i<32;i++)if(cache[i].source==source&&cache[i].sheet==sheet&&cache[i].hero==hero&&cache[i].style==style&&cache[i].frames==frames)return cache[i].result;
  uint8_t *s=source,*sh=sheet;int w=*(int *)(s+0x20),h=*(int *)(s+0x24),sw=*(int *)(sh+0x20),height=*(int *)(sh+0x24),y=0;
  if(w<=0||w>128||h<=0||h>16384||sw<=0||sw>128||height<=0||height>16384)return NULL;
  uint32_t a=0,b=0;AGProfileIcon pixels={0},palette={0};
- if(frames){int count=h/(w*frames);if(count<=0)return NULL;int index=style<count?style:count-1;y=index*w*frames;h=w*frames;}
+ if(frames){int count=h/(w*frames);if(count<=0||(frames==1&&style>=count))return NULL;int index=style<count?style:count-1;y=index*w*frames;h=w*frames;}
  else{
   if(style>=height/(sw*(hero==2?2:hero==5?4:1)))return NULL;
   extern int AGCostumePalette(int,int,uint32_t *,uint32_t *);
@@ -47,3 +47,4 @@ void *AGCostumeImage(void *env,void *source,void *sheet,int hero,int style,int f
  entry->source=((void *(*)(void *,void *))jni[21])(env,source);entry->sheet=((void *(*)(void *,void *))jni[21])(env,sheet);
  entry->result=job.result;entry->hero=hero;entry->style=style;entry->frames=frames;return job.result;
 }
+
