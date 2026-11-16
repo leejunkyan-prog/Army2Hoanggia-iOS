@@ -3,6 +3,7 @@
 #include <stdatomic.h>
 #include <stdbool.h>
 #include <string.h>
+#include <math.h>
 #include "Lobby.h"
 #include "Spectator.h"
 #include "Aura.h"
@@ -27,6 +28,7 @@
 @property(nonatomic) BOOL requestedGearAtlas;
 @property(nonatomic) NSTimeInterval watchDeadline;
 @property(nonatomic,strong) NSData *outgoing;
+@property(nonatomic,strong) NSMutableArray *profileHistory;
 - (void)open;
 - (void)close;
 @end
@@ -44,6 +46,45 @@ static NSData *gearAtlas[6];
 static uintptr_t atlasConnection[6];
 static uintptr_t atlasRequest[6];
 enum { NoFieldResult = 256 };
+
+static dispatch_queue_t AGProfileDiagnosticQueue(void){
+    static dispatch_queue_t queue;static dispatch_once_t once;
+    dispatch_once(&once,^{queue=dispatch_queue_create("army2.profile.diagnostic",DISPATCH_QUEUE_SERIAL);});return queue;
+}
+/* Only bounded numbers/arrays. Names, chat, credentials, PNG bytes and packet
+   payloads cannot enter this report even if an unexpected web field arrives. */
+static id AGProfileNumber(id value,int depth){
+    if([value isKindOfClass:NSNumber.class]){
+        double n=[value doubleValue];long long i=[value longLongValue];
+        return isfinite(n)&&n==(double)i&&i>=INT32_MIN&&i<=INT32_MAX?@(i):nil;
+    }
+    if(depth<2&&[value isKindOfClass:NSArray.class]&&[value count]<=6){
+        NSMutableArray *copy=[NSMutableArray array];
+        for(id part in value){id n=AGProfileNumber(part,depth+1);if(!n)return nil;[copy addObject:n];}
+        return [copy copy];
+    }
+    return nil;
+}
+static void AGSaveProfileDiagnostic(AGLobby *panel,NSDictionary *input){
+    if(panel.tab!=AGLobbyField||panel.closing)return;
+    NSMutableDictionary *fields=[NSMutableDictionary dictionary];
+    for(NSString *key in @[@"requested_id",@"rank",@"serial",@"hero",@"level",@"abilities",@"item_ids",@"upgrades",@"tiers",
+        @"has_details",@"flat",@"percent",@"gem_counts",@"icon_bytes",@"icon_sources",@"catalog_frames",@"atlas_width",@"atlas_height"]){
+        id n=AGProfileNumber(input[key],0);if(n)fields[key]=n;
+    }
+    if(!fields[@"requested_id"]||[fields[@"requested_id"] intValue]<1||!fields[@"hero"]||[fields[@"hero"] intValue]<0||[fields[@"hero"] intValue]>9)return;
+    NSString *stamp=[[NSISO8601DateFormatter new] stringFromDate:NSDate.date];
+    NSDictionary *sample=@{@"at":stamp,@"pb":@(panel.variant+1),@"profile":[fields copy]};
+    if(!panel.profileHistory)panel.profileHistory=[NSMutableArray array];
+    [panel.profileHistory addObject:sample];while(panel.profileHistory.count>32)[panel.profileHistory removeObjectAtIndex:0];
+    int build=[NSBundle.mainBundle.infoDictionary[@"CFBundleVersion"] intValue];
+    NSDictionary *report=@{@"build":@(build),@"created_at":stamp,@"latest":sample,@"history":[panel.profileHistory copy],
+        @"icon_source_legend":@{@"0":@"server_icon_unavailable",@"1":@"profile_server_png",@"2":@"live_server_catalog",@"3":@"image_loading",@"4":@"invalid_profile_png"}};
+    NSData *data=[NSJSONSerialization dataWithJSONObject:report options:NSJSONWritingPrettyPrinted error:nil];if(!data||data.length>262144)return;
+    NSString *directory=NSSearchPathForDirectoriesInDomains(NSDocumentDirectory,NSUserDomainMask,YES).firstObject;
+    NSString *path=[directory stringByAppendingPathComponent:[NSString stringWithFormat:@"Profile%d-diagnostic.json",build]];
+    dispatch_async(AGProfileDiagnosticQueue(),^{[data writeToFile:path atomically:YES];});
+}
 
 void AGLobbyWatchFinished(int v,uintptr_t connection){
     AGLobby *panel;
@@ -365,6 +406,9 @@ int AGLobbyReceive(void *env,void *message,int v){
 - (void)userContentController:(WKUserContentController *)ctrl didReceiveScriptMessage:(WKScriptMessage *)message{
     if(message.webView!=self.web||!message.frameInfo.isMainFrame||![message.body isKindOfClass:NSArray.class])return;
     NSArray *args=message.body;
+    if(args.count==2&&[args[0] isEqual:@"profileDiagnostic"]&&[args[1] isKindOfClass:NSDictionary.class]){
+        if(activePanel==self&&!self.watching)AGSaveProfileDiagnostic(self,args[1]);return;
+    }
     if(args.count==2&&[args[0] isKindOfClass:NSString.class]&&[args[0] isEqual:@"close"]){[self close];return;}
     if(args.count==2&&[args[0] isEqual:@"edit"]&&[args[1] isKindOfClass:NSDictionary.class]){
         NSDictionary *input=args[1];

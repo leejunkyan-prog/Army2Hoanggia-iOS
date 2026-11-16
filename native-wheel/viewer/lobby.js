@@ -7,6 +7,7 @@ let rankSelection=null;
 let matchSelection=null,profileTarget=null;
 let editSerial=0,editState=null,inputPending=false,marketColumns=7,marketGeometry=null;
 let profileCanvasHeight=0;
+let profileDiagnosticSignature='';
 const icons=new Map();
 function bytes64(bytes){return btoa(Array.from(bytes,b=>String.fromCharCode(b)).join(''));}
 function status(message){notice=String(message);document.getElementById('status').textContent=notice;}
@@ -157,11 +158,24 @@ function messagePlayer(){
 }
 window.lobbyMessageSent=()=>{unlock();status('Đã gửi yêu cầu nhắn tin.');};
 window.lobbyRequestFailed=()=>{unlock();status('Chưa gửi được yêu cầu. Bấm cập nhật để thử lại.');};
+function reportProfile(){
+ if(closed||view!=='profile'||reply?.type!=='profile'||!profileTarget||reply.id!==profileTarget.id)return;
+ const r=reply,items=Array.from({length:6},(_,i)=>ArmyProfile.item(r,i)),sources=items.map((p,i)=>p&&p.id>=0?ui.serverGearIconMetadata(r.avatar.character,i,p.id,r.icons?.[i]):{kind:0,frame:-1});
+ const data={requested_id:r.id,rank:r.rank,serial:field.pending,hero:r.avatar.character,level:r.level,abilities:r.abilities,
+  item_ids:items.map(p=>p?.id??-1),upgrades:items.map(p=>p?.upgrade??0),tiers:items.map(p=>p?.tier??0),
+  has_details:items.map((_,i)=>r.details?.[i]?1:0),flat:items.map((_,i)=>r.details?.[i]?.flat||[]),percent:items.map((_,i)=>r.details?.[i]?.percent||[]),
+  gem_counts:items.map((_,i)=>r.gems?.[i]?.length||0),icon_bytes:items.map((_,i)=>r.icons?.[i]?.length||0),
+  icon_sources:sources.map(s=>s.kind),catalog_frames:sources.map(s=>s.frame),atlas_width:Math.max(0,...sources.map(s=>s.atlasWidth||0)),atlas_height:Math.max(0,...sources.map(s=>s.atlasHeight||0))};
+ const signature=JSON.stringify(data);if(signature===profileDiagnosticSignature)return;profileDiagnosticSignature=signature;
+ window.webkit.messageHandlers.lobby.postMessage(['profileDiagnostic',data]);
+}
+window.lobbyIconsReady=reportProfile;
 window.lobbyGearAtlas=encoded=>{
  try{
   const bytes=Uint8Array.from(atob(encoded),c=>c.charCodeAt(0));
   const {frames,png}=readGearAtlas(bytes);
   ui.setGearAtlas(frames,'data:image/png;base64,'+bytes64(png));
+  reportProfile();
  }catch(e){/* Profile replies may carry their own icons. */}
 };
 window.lobbyWatchReturned=()=>{
@@ -334,10 +348,10 @@ function drawMarket(){ui.classicPixels((width,height)=>{
  ui.classicFooter(width,height,'Menu','Chọn','Trở ra',marketMenu,()=>guard(marketSelect),close);
 });}
 function drawEvent(){
-    ui.text('BXH Sự kiện',160,25,{align:'center',title:true});
+    ui.text('Sự kiện',160,25,{align:'center',title:true});
     ui.rect(0,41,320,14,'#1478ad');
     ui.text('Tên',8,41,{color:'#ffe270'});
-    ui.text(reply?.heading||'BXH Sự kiện',312,41,{align:'right',color:'#ffe270',max:220});
+    ui.text(reply?.heading||'Sự kiện',312,41,{align:'right',color:'#ffe270',max:220});
     const rows=reply?.rows||[],height=30,capacity=Math.max(1,Math.floor((ui.height-86)/height));
     if(focus<scroll)scroll=focus;
     if(focus>=scroll+capacity)scroll=focus-capacity+1;
@@ -436,6 +450,7 @@ window.receiveFrame=(cmd,encoded,auras=[])=>{
                 }
                 view=r.type;focus=scroll=profileFocus=0;
                 if(r.type==='profile')profileFocus=ArmyProfile.slots(r)[0]??-1;
+                if(r.type==='profile')reportProfile();
                 if(r.type==='matches'&&r.page===matchSelection?.page){
                     const i=r.rows.findIndex(row=>row.key.join(',')===matchSelection.key);
                     focus=i>=0?i:Math.max(0,Math.min(matchSelection.focus,r.rows.length-1));

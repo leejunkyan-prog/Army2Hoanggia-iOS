@@ -2,12 +2,23 @@
 const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const path=require('node:path');
+const zlib=require('node:zlib');
 const {pathToFileURL}=require('node:url');
 const {chromium}=require('playwright');
 const {ArmyWriter}=require('./viewer/market.js');
 const {ArmyBattlefield}=require('./viewer/battlefield.js');
 const Profile=require('./viewer/profile.js');
 const w=()=>new ArmyWriter();
+// Deliberately synthetic, flat-color PNGs make wrong-image substitution
+// measurable. They are not photographs or captured server item artwork.
+function testPng(colors){
+ const crc=bytes=>{let c=0xffffffff;for(const b of bytes){c^=b;for(let i=0;i<8;i++)c=c&1?0xedb88320^(c>>>1):c>>>1;}return(c^0xffffffff)>>>0;};
+ const chunk=(name,bytes)=>{const type=Buffer.from(name),out=Buffer.alloc(bytes.length+12);out.writeUInt32BE(bytes.length);type.copy(out,4);bytes.copy(out,8);out.writeUInt32BE(crc(Buffer.concat([type,bytes])),bytes.length+8);return out;};
+ const ihdr=Buffer.alloc(13);ihdr.writeUInt32BE(16);ihdr.writeUInt32BE(16*colors.length,4);ihdr[8]=8;ihdr[9]=6;
+ const rows=[];for(const rgb of colors)for(let y=0;y<16;y++)rows.push(Buffer.concat([Buffer.from([0]),Buffer.concat(Array.from({length:16},()=>Buffer.from([...rgb,255])))]));
+ return Buffer.concat([Buffer.from('89504e470d0a1a0a','hex'),chunk('IHDR',ihdr),chunk('IDAT',zlib.deflateSync(Buffer.concat(rows))),chunk('IEND',Buffer.alloc(0))]);
+}
+const diamondColor=[80,180,255],platinumColor=[220,220,230],diamondPng=testPng([diamondColor]),platinumPng=testPng([platinumColor]);
 const rows=[{rank:1,id:41,name:'top-magenta',hero:0},{rank:2,id:52,name:'other-account',hero:1}];
 function board(serial){
  const p=w().int(1129591862).byte(1).int(serial).int(90).int(700).byte(rows.length);
@@ -16,11 +27,11 @@ function board(serial){
  return Uint8Array.from(p.bytes);
 }
 const magentaIds=[56,54,55,57,58];
-function profile(serial,row,{hero=9,upgrade=16,health=1935000000,costume=true,details=true}={}){
+function profile(serial,row,{hero=9,upgrade=16,health=1935000000,costume=true,details=true,icons=true}={}){
  const ids=hero===9?magentaIds:[54,52,53,55,56];
  const p=w().int(1129591862).byte(2).int(serial).int(row.rank).utf(row.name).int(999).utf(hero===9?'Magenta':'Miss 6').byte(5);
  for(const value of [health,9274,14632,14679,14569])p.int(value);
- for(let i=0;i<5;i++)p.short(ids[i]).utf(['súng','nón','áo','quần','kính'][i]+' kim cương 3').byte(upgrade).byte(7).byte(0);
+ for(let i=0;i<5;i++)p.short(ids[i]).utf(['súng','nón','áo','quần','kính'][i]+(hero===9?' kim cương 3':' bạch kim')).byte(upgrade).byte(hero===9?7:6).byte(0);
  p.byte(hero);for(const id of ids)p.short(id);
  p.byte(1).byte(98).long(493166945541).long(2000).int(240).byte(costume?1:0);
  if(costume)p.short(2999).utf('Bộ trang phục của top 1').byte(12).byte(7).byte(0);
@@ -35,6 +46,7 @@ function profile(serial,row,{hero=9,upgrade=16,health=1935000000,costume=true,de
   p.int(0x47454d49).byte(6);
   for(let i=0;i<6;i++){p.byte(i<5||costume?1:0);if(i<5||costume)p.utf('Ngọc của '+row.name+' ô '+i).utf('Sinh lực +7%. Sức mạnh +8%.');}
  }
+ if(icons){p.int(0x49434f4e).byte(6);for(let i=0;i<6;i++){const png=i<5||costume?(hero===9?diamondPng:platinumPng):Buffer.alloc(0);p.short(png.length);for(const b of png)p.byte(b);}}
  return Uint8Array.from(p.bytes);
 }
 function encoded(p){return Buffer.from(p).toString('base64');}
@@ -62,8 +74,9 @@ assert.deepEqual(Profile.slots(sparse),[0,2,3,4]);assert.equal(Profile.move(spar
  const browser=await chromium.launch({args:['--no-sandbox'],executablePath:process.env.ARMY2_CHROMIUM});
  const page=await browser.newPage({viewport:{width:432,height:660},deviceScaleFactor:2});
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
- await page.addInitScript(()=>{window.sent=[];window.webkit={messageHandlers:{lobby:{postMessage:a=>sent.push(a)}}};});
+ await page.addInitScript(()=>{window.sent=[];window.profileDiagnostics=[];window.webkit={messageHandlers:{lobby:{postMessage:a=>a[0]==='profileDiagnostic'?profileDiagnostics.push(a[1]):sent.push(a)}}};});
  await page.goto(process.env.ARMY2_VIEWER_URL||pathToFileURL(path.join(__dirname,'viewer/lobby.html')).href);
+ await page.evaluate(()=>{const note=document.createElement('div');note.textContent='DỮ LIỆU KIỂM THỬ — KHÔNG PHẢI ACC THẬT';note.style.cssText='position:fixed;top:0;left:0;right:0;background:#173b58;color:white;text-align:center;font:12px sans-serif;padding:6px;pointer-events:none';document.body.append(note);});
  await page.evaluate(()=>{lobbyViewport(432,[432,0,0,0,0,0,0],602);openTab('field',0);});
  await page.evaluate(b=>receiveFrame(-120,b),encoded(board(1)));
  await page.evaluate(()=>{
@@ -79,6 +92,12 @@ assert.deepEqual(Profile.slots(sparse),[0,2,3,4]);assert.equal(Profile.move(spar
  assert.deepEqual(await page.evaluate(()=>drawn.slice(-4).map(a=>[a[0],a[1],a[2],a[5]])),magentaIds.slice(0,4).map((id,i)=>[9,i,id,16]));
  const geometry=await page.evaluate(()=>frames.at(-1));assert.deepEqual(geometry.slice(0,2),[124,259]);
  assert.ok(Math.abs(geometry[2]-450/432)<1e-6,'Profile must use the same432-pixel grid as the outside screen: '+JSON.stringify(geometry));
+ await page.waitForFunction(()=>PixelUI.serverGearIconMetadata(reply.avatar.character,0,reply.items[0].id,reply.icons[0]).kind===1);
+ const iconPixel=()=>page.evaluate(()=>{const g=PixelUI.g;g.save();g.setTransform(1,0,0,1,0,0);g.clearRect(24,24,16,16);PixelUI.equipmentItem(reply.avatar.character,0,reply.items[0].id,32,32,16,reply.icons[0],true);const color=Array.from(g.getImageData(32,32,1,1).data);g.restore();return color;});
+ assert.deepEqual(await iconPixel(),[...diamondColor,255],'The equipped item must paint its exact server PNG');
+ assert.equal(await page.evaluate(()=>profileDiagnostics.at(-1).hero),9);
+ assert.ok(await page.evaluate(()=>profileDiagnostics.at(-1).icon_sources.every(s=>s===1)));
+ assert.ok(await page.evaluate(()=>!JSON.stringify(profileDiagnostics).includes('top-magenta')&&!JSON.stringify(profileDiagnostics).includes('Ngọc')),'Diagnostic metadata must omit names/gem text and PNG payloads');
  await page.waitForTimeout(300);
  const out=path.join(__dirname,'build');fs.mkdirSync(out,{recursive:true});
  await page.screenshot({path:path.join(out,'profile303-magenta.png')});
@@ -94,8 +113,10 @@ assert.deepEqual(Profile.slots(sparse),[0,2,3,4]);assert.equal(Profile.move(spar
  await page.evaluate(b=>receiveFrame(-120,b),encoded(profile(3,rows[0])));
  assert.deepEqual(await page.evaluate(()=>[view,waiting]),['board',false],'A late refresh must not reopen a closed profile');
  await page.evaluate(()=>{focus=1;profile();});
- await page.evaluate(b=>receiveFrame(-120,b),encoded(profile(4,rows[1],{hero:1,upgrade:0,costume:false,health:1234})));
- assert.deepEqual(await page.evaluate(()=>[reply.id,reply.avatar.character,reply.abilities[0],...reply.items.map(p=>p.upgrade)]),[52,1,1234,0,0,0,0,0]);
+ await page.evaluate(b=>receiveFrame(-120,b),encoded(profile(4,rows[1],{hero:1,upgrade:16,costume:false,health:1234})));
+ assert.deepEqual(await page.evaluate(()=>[reply.id,reply.avatar.character,reply.abilities[0],...reply.items.map(p=>p.upgrade)]),[52,1,1234,16,16,16,16,16]);
+ await page.waitForFunction(()=>PixelUI.serverGearIconMetadata(reply.avatar.character,0,reply.items[0].id,reply.icons[0]).kind===1);
+ assert.deepEqual(await iconPixel(),[...platinumColor,255],'The same+16 level must not change platinum into the previous diamond icon');
  await page.evaluate(()=>{fieldBack();focus=0;profile();});
  await page.evaluate(b=>receiveFrame(-120,b),encoded(profile(5,rows[0],{upgrade:15,health:139028})));
  assert.deepEqual(await page.evaluate(()=>[reply.id,reply.abilities[0],...reply.items.map(p=>p.upgrade)]),[41,139028,15,15,15,15,15]);
@@ -105,6 +126,19 @@ assert.deepEqual(Profile.slots(sparse),[0,2,3,4]);assert.equal(Profile.move(spar
   await page.evaluate(()=>profileDetails());assert.ok(await page.evaluate(()=>modal.lines.length>0));
   await page.evaluate(()=>lobbyKey(-7));
  }
+ // Exercise the live catalog path independently of per-profile PNGs.
+ const strip=testPng([diamondColor,platinumColor]),catalog=w().byte(1).byte(9).short(999).byte(1).byte(0).byte(2);
+ for(const [id,frame]of [[56,0],[43,1]]){catalog.short(id).byte(13).short(frame);for(let i=0;i<49;i++)catalog.byte(0);}
+ catalog.short(strip.length);for(const b of strip)catalog.byte(b);
+ await page.evaluate(b=>lobbyGearAtlas(b),encoded(catalog.bytes));
+ await page.waitForFunction(()=>PixelUI.serverGearIconMetadata(9,0,56).kind===2);
+ const catalogPixels=await page.evaluate(()=>{
+  const g=PixelUI.g;g.save();g.setTransform(1,0,0,1,0,0);const colors=[];
+  for(const id of [56,43]){g.clearRect(24,24,16,16);PixelUI.equipmentItem(9,0,id,32,32,16,null,true);colors.push(Array.from(g.getImageData(32,32,1,1).data));}
+  const missing=PixelUI.gearIcon(9,0,48,32,32,16,null,true);g.restore();return {colors,missing};
+ });
+ assert.deepEqual(catalogPixels.colors,[[...diamondColor,255],[...platinumColor,255]],'Catalog item IDs must select different server frames even at the same+16 level');
+ assert.equal(catalogPixels.missing,false,'Missing catalog entries must not be replaced by avatar-body crops');
  assert.deepEqual(errors,[]);await browser.close();
- console.log('PASS profile303: fresh targeted replies, Magenta diamond3+16 with a different logged-in hero, changed hero since ranking, six worn/costume slots and gems, full HP, native432 geometry/sprites, touch/key detail sheets, stale/wrong-account rejection, refresh changes, missing details stay unknown and multiple viewport sizes');
+ console.log('PASS profile303: fresh targeted replies, synthetic Magenta+16 fixture, distinct diamond/platinum server PNGs and catalog frames at identical+16, no avatar-crop icon fallback, six worn/costume details/gems, full HP, native432 geometry, stale/wrong-account rejection, numeric-only icon diagnostics, changed gear, missing details and multiple viewport sizes; screenshots clearly marked TEST DATA');
 })().catch(e=>{console.error(e);process.exit(1);});

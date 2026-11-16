@@ -157,6 +157,17 @@ static void battlefield296(UIWindow *host){
             if(!ready)pump295(.03);
         }
         NSCAssert(ready,@"Real battlefield page failed to load");
+        ui295(^{
+            int samples=v==0&&!automatic?40:1;
+            for(int i=0;i<samples;i++)AGSaveProfileDiagnostic(panel,@{@"requested_id":@41,@"hero":@9,@"serial":@(i+1),@"item_ids":@[@56,@54,@55,@57,@58,@2999],@"icon_sources":@[@1,@1,@2,@2,@3,@0],@"flat":@[@[@115,@181,@95,@96,@91]],@"PRIVATE_ACCOUNT_NAME":@"DO_NOT_EXPORT_PNG_OR_ACCOUNT_TEXT"});
+        });
+        dispatch_sync(AGProfileDiagnosticQueue(),^{});
+        NSString *profilePath=[NSSearchPathForDirectoriesInDomains(NSDocumentDirectory,NSUserDomainMask,YES).firstObject stringByAppendingPathComponent:@"Profile1-diagnostic.json"];
+        NSData *profileBytes=[NSData dataWithContentsOfFile:profilePath];
+        NSDictionary *profileReport=profileBytes?[NSJSONSerialization JSONObjectWithData:profileBytes options:0 error:nil]:nil;
+        NSCAssert([profileReport[@"latest"][@"pb"] intValue]==v+1&&[profileReport[@"latest"][@"profile"][@"hero"] intValue]==9,@"Profile diagnostic lost the selected PB/hero");
+        NSCAssert([profileReport[@"history"] count]<=32&&[profileReport[@"latest"][@"profile"][@"item_ids"] count]==6,@"Profile diagnostic is unbounded or lost slot identity");
+        NSCAssert(![[[NSString alloc]initWithData:profileBytes encoding:NSUTF8StringEncoding] containsString:@"DO_NOT_EXPORT"],@"Profile diagnostic exported account text or payloads");
         js296(panel.web,@"window.returned296=0;const saved296=lobbyWatchReturned;window.lobbyWatchReturned=()=>{returned296++;saved296();}");
         uint32_t serial=12345;panel.watchSerial=serial;
         uint8_t ack[9]={'C','T','4','6',6};memcpy(ack+5,&serial,4);

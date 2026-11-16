@@ -38,20 +38,40 @@ const PixelUI=(()=>{
  function avatar(row,x,y,scale=.72){const hero=row.character??row.hero??0,parts=row.parts??[0,0,0,0,0];g.save();g.translate(x,y);g.scale(scale,scale);aura(row.aura??0,0,0,0);for(const k of [0,4])piece(hero,k,parts[k],0,0,0);const body=image('base'+hero);if(body.complete&&body.naturalWidth)g.drawImage(body,-Math.floor(body.width/2),-body.height);for(const k of [1,2,3])piece(hero,k,parts[k],0,0,0);aura(row.aura??0,0,0,1);g.restore();}
  let gearAtlas=null;
  function setGearAtlas(frames,src){
-  const png=new Image();png.src=src;gearAtlas={frames,png};
+  const png=new Image();png.onload=png.onerror=()=>window.lobbyIconsReady?.();png.src=src;gearAtlas={frames,png};
+ }
+ function profileIcon(hero,slot,id,png){
+  if(!png?.length)return null;
+  const key='icon:'+hero+':'+slot+':'+id+':'+Array.from(png).join(',');
+  let im=images.get(key);
+  if(!im){im=new Image();im.onload=im.onerror=()=>window.lobbyIconsReady?.();images.set(key,im);im.src='data:image/png;base64,'+btoa(Array.from(png,b=>String.fromCharCode(b)).join(''));}
+  return im;
+ }
+ function serverGearIconMetadata(hero,slot,id,png=null){
+  const im=profileIcon(hero,slot,id,png),row=gearAtlas?.frames.get(hero+':'+slot+':'+id),atlas=gearAtlas?.png;
+  const result={kind:0,frame:Number.isInteger(row)?row:-1,atlasWidth:atlas?.naturalWidth||0,atlasHeight:atlas?.naturalHeight||0};
+  if(im?.complete&&im.naturalWidth){result.kind=1;return result;}
+  if(Number.isInteger(row)&&row>=0&&atlas?.complete&&atlas.naturalWidth&&(row+1)*atlas.width<=atlas.height){result.kind=2;return result;}
+  if(im&&!im.complete||Number.isInteger(row)&&atlas&&!atlas.complete)result.kind=3;
+  else if(im&&im.complete&&!im.naturalWidth)result.kind=4;
+  return result;
  }
  function gearIcon(hero,slot,id,x,y,size=16,png=null,nativeIcon=false){
+  if(nativeIcon){
+   const info=serverGearIconMetadata(hero,slot,id,png);
+   if(info.kind===1){const im=profileIcon(hero,slot,id,png),k=Math.min(size/im.width,size/im.height),w=Math.round(im.width*k),h=Math.round(im.height*k);g.drawImage(im,Math.round(x-w/2),Math.round(y-h/2),w,h);return true;}
+   if(info.kind===2){const atlas=gearAtlas.png,side=atlas.width;g.drawImage(atlas,0,info.frame*side,side,side,Math.round(x-size/2),Math.round(y-size/2),size,size);return true;}
+   // Item icons are independent of the avatar's cropped clothing sprites.
+   // A missing server icon must never turn diamond into another item image.
+   return false;
+  }
   if(png?.length){
    const key='icon:'+hero+':'+slot+':'+id+':'+Array.from(png).join(',');
    let im=images.get(key);
    if(!im){im=new Image();im.src='data:image/png;base64,'+btoa(Array.from(png,b=>String.fromCharCode(b)).join(''));images.set(key,im);}
    if(im.complete&&im.naturalWidth){const k=Math.min(size/im.width,size/im.height);const w=Math.round(im.width*k),h=Math.round(im.height*k);g.drawImage(im,Math.round(x-w/2),Math.round(y-h/2),w,h);return true;}
   }
-  const key=hero+':'+slot+':'+id,row=gearAtlas?.frames.get(key),atlas=gearAtlas?.png;
-  if(nativeIcon&&Number.isInteger(row)&&atlas.complete&&atlas.naturalWidth&&row*atlas.width+16<=atlas.height){
-   g.drawImage(atlas,0,row*atlas.width,16,16,Math.round(x-size/2),Math.round(y-size/2),size,size);
-   return true;
-  }
+  const key=hero+':'+slot+':'+id;
   const r=ArmyArt.gear[key];
   if(!r||!r[2]||!r[3])return false;
   const im=image('hero'+hero);
@@ -209,7 +229,7 @@ const PixelUI=(()=>{
  }
  function start(paint,{transparent=false}={}){cancelAnimationFrame(raf);let last=-1;function tick(now){const f=Math.floor(now/42);if(f!==last){last=f;frame=f;hits=[];if(transparent)g.clearRect(0,0,320,height);else sky();paint();}raf=requestAnimationFrame(tick);}raf=requestAnimationFrame(tick);}
  canvas.addEventListener('pointerup',e=>{const r=canvas.getBoundingClientRect(),x=(e.clientX-r.left)*320/r.width,y=(e.clientY-r.top)*height/r.height;for(let i=hits.length-1;i>=0;i--){const h=hits[i];if(x>=h.x&&x<h.x+h.w&&y>=h.y&&y<h.y+h.h){h.run?.();break;}}});
- return {g,classicSize,classicPixels,classicFooter,inventoryFrame,nativePixels,profileBackground,roundRect,equipmentFrame,equipmentItem,marquee,text,textWidth,wrapText,rect,sprite,avatar,aura,gear,gearIcon,setGearAtlas,statsIcon,rank,heading,panel,frameBox,stripedBox,bottomDialog,footer,menu,zone,start,get height(){return height;},get frame(){return frame;},canvas};
+ return {g,classicSize,classicPixels,classicFooter,inventoryFrame,nativePixels,profileBackground,roundRect,equipmentFrame,equipmentItem,marquee,text,textWidth,wrapText,rect,sprite,avatar,aura,gear,gearIcon,setGearAtlas,serverGearIconMetadata,statsIcon,rank,heading,panel,frameBox,stripedBox,bottomDialog,footer,menu,zone,start,get height(){return height;},get frame(){return frame;},canvas};
 })();
 
 

@@ -86,6 +86,35 @@ __attribute__((noinline,optnone)) static int NNative(void *env,void *context){
     for(size_t i=0;i<j->length;i++)write(env,writer,data[i]);send(env,session,message);return 1;
 }
 static int NRun(void *env,int (*fn)(void *,void *),void *context){return AGWheelGuard(env,fn,context,(void *)(NBase()+0x1300d54));}
+/* The native ranking painter reads String[][][7][selected row]. Change only
+   the event row; keep its native action/index and the other three labels. */
+static uintptr_t NEventTitles[6];
+static const uintptr_t NRankingClasses[6]={0x20822b0,0x20b19a0,0x20df690,0x210d380,0x213b070,0x2168d60};
+static int NEventMenuTitle(void *env,void *opaque){
+    int variant=*(int *)opaque;
+    uint8_t *clazz=*(void **)(NBase()+NRankingClasses[variant]);if(!clazz)return 0;
+    uint8_t *outer=*(void **)(clazz+0xa0);if(!outer)return 0;
+    int count=*(int *)(outer+0x10);if(count<8||count>32)return 0;
+    uint8_t *labels=*(void **)(outer+0x18+7*8);if(!labels)return 0;
+    count=*(int *)(labels+0x10);if(count<4||count>16)return 0;
+    if(NEventTitles[variant]&&*(uintptr_t *)(labels+0x18+3*8)==NEventTitles[variant])return 0;
+    void **jni=*(void ***)env;
+    void *(*pin)(void *,void *)=(void *)jni[21];
+    void (*unpin)(void *,void *)=(void *)jni[22];
+    void *root=pin(env,labels);if(!root)return 0;
+    if(!NEventTitles[variant]){
+        static const uint16_t title[]={0x53,0x1ef1,0x20,0x6b,0x69,0x1ec7,0x6e}; // Sự kiện
+        void *local=((void *(*)(void *,const uint16_t *,int))jni[163])(env,title,7);
+        if(local){NEventTitles[variant]=(uintptr_t)pin(env,local);((void (*)(void *,void *))jni[23])(env,local);}
+    }
+    int changed=NEventTitles[variant]!=0;
+    if(changed)((void (*)(void *,void *,int,void *))jni[174])(env,root,3,(void *)NEventTitles[variant]);
+    unpin(env,root);return changed;
+}
+int AGEventMenuTitle(void *env,int variant){
+    if(!env||variant<0||variant>=6)return 0;
+    return NRun(env,NEventMenuTitle,&variant)>0;
+}
 int AGLobbySend(void *env,int variant,uintptr_t connection,int command,const uint8_t *bytes,size_t length){
     if(!env||variant<0||variant>=6||!connection||!bytes||!length)return 0;
     if(command==-121){if(length>1024||bytes[0]>4)return 0;}
@@ -211,6 +240,7 @@ static int NCallback(void *env,void *context){
 void AGNotesTick(void *env,int variant){
     if(env&&variant>=0&&variant<6)AGViewerTick(env,variant);
     if(!env||variant<0||variant>=6)return;
+    AGEventMenuTitle(env,variant);
     if(!atomic_load(&NInitialized)&&!AGLobbyOpened(variant)&&!AGAuraKnown(variant)&&!AGViewerActive(variant))return;
     if(!atomic_load(&NInitialized))NInit();
     double now=NNow();int changed=0;NJob probe={.variant=variant};int connected=NRun(env,NNative,&probe);
