@@ -34,7 +34,7 @@ for v in range(6):
  sheets=[image() for _ in range(10)];t.put(t.B+catalogs[v],'<Q',catalog);t.put(catalog+0xa8,'<Q',array(sheets));t.put(manager+0x58,'<i',47)
  for phase in (0,1):
   t.put(manager+0x64,'<b',phase);rows=[];snapshots=[]
-  expected={12:5,20:6}
+  expected={12:5,19:6,20:6}
   if phase:expected.update({0:0,9:3,11:5,19:6,21:7})
   for kind in (0,1,9,11,12,19,20,21,22):
    p=t.alloc(0x100);t.put(p+0xcf,'<B',kind);t.put(p+0x4c,'<i',0 if kind in (11,12) else 31)
@@ -51,8 +51,8 @@ for v in range(6):
   for kind,p,helper,rot,original,rotated,old,oldHelper in snapshots:
    fresh=bytearray(t.u.mem_read(p,0x100));hero=expected.get(kind)
    if hero is not None:
-    style=47 if kind in (11,12) else 31;frames=4 if kind==12 else 0
-    key=(original,sheets[hero],hero,style,frames);assert key in converted,(v,phase,kind,key,calls)
+    style=47 if kind in (11,12) else 31;frames=4 if kind==12 else 1 if kind==19 and phase==0 else 0
+    key=(sheets[hero] if frames==1 else original,sheets[hero],hero,style,frames);assert key in converted,(v,phase,kind,key,calls)
     location=helper+0x18 if helper else p+0x28;assert t.get(location,'<Q')==converted[key]
     if helper:
      result=bytearray(t.u.mem_read(helper,0x40));result[0x18:0x20]=oldHelper[0x18:0x20];assert bytes(result)==oldHelper
@@ -67,3 +67,4 @@ for v in range(6):
  t.put(canvas+0xb8,'<Q',0);t.call('_AGCostumeRender',t.E,v)
 assert all(n==0 for n in t.pins.values()),t.pins
 print('PASS compiled ARM64: six PBs, normal/POW cases, fixed Gun/Monkey/Granos/Tarzan images, Chicken eggs, all cached rotated images, secondary four-frame Granos style, repeated render idempotence and root cleanup; physics/lifecycle fields unchanged. UIKit PNG conversion is mocked.')
+

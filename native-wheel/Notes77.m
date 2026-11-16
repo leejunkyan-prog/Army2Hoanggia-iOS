@@ -105,7 +105,8 @@ static int NEventMenuTitle(void *env,void *opaque){
     void (*unpin)(void *,void *)=(void *)jni[22];
     void *root=pin(env,labels);if(!root)return 0;
     if(!NEventTitles[variant]){
-        static const uint16_t title[]={0x53,0x1ef1,0x20,0x6b,0x69,0x1ec7,0x6e}; // Sự kiện
+        /* The native title atlas contains uppercase Vietnamese only. */
+        static const uint16_t title[]={0x53,0x1ef0,0x20,0x4b,0x49,0x1ec6,0x4e}; // SỰ KIỆN
         void *local=((void *(*)(void *,const uint16_t *,int))jni[163])(env,title,7);
         if(local){NEventTitles[variant]=(uintptr_t)pin(env,local);((void (*)(void *,void *))jni[23])(env,local);}
     }
@@ -543,6 +544,7 @@ __attribute__((visibility("default"))) void AGNotesPreviewCheck(void){
 
 
 int AGNotesBlocksAuto(int v){if(v<0||v>=6)return 1;pthread_mutex_lock(&NMutex);int blocked=NModels[v].cap.active||NModels[v].inboxVisible||AGViewerActive(v);pthread_mutex_unlock(&NMutex);return blocked;}
+
 
 
 
