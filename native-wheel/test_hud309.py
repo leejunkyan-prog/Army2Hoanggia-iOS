@@ -84,6 +84,10 @@ def receive(v,cmd,data,prefix=b'abc'):
  result=t.call('_AGHUDReceive',t.E,message,v);assert t.get(stream+0x20,'<i')==len(prefix);return result
 
 def painter(v):
+ global original
+ # Each PB has its own native body. Distinct executable addresses also avoid
+ # stale Unicorn translation blocks when moving to the next PB fixture.
+ original=t.F+0x35000+v*0x200
  words=[0xd10143ff,pair(False,29,30,48),pair(False,19,20,16),memory(False,21,32),move(19,0),move(20,1),move(21,2),imm(3,0)]
  def address(r,p):
   words.append(0xd2800000|((p&65535)<<5)|r)
