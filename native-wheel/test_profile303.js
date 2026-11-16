@@ -3,7 +3,7 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const path=require('node:path');
 const zlib=require('node:zlib');
-const {pathToFileURL}=require('node:url');
+const http=require('node:http');
 const {chromium}=require('playwright');
 const {ArmyWriter}=require('./viewer/market.js');
 const {ArmyBattlefield}=require('./viewer/battlefield.js');
@@ -71,11 +71,23 @@ const sparse={...data,items:data.items.map((p,i)=>i===1?{...p,id:-1}:p),display:
 assert.deepEqual(Profile.slots(sparse),[0,2,3,4]);assert.equal(Profile.move(sparse,0,1),2);
 
 (async()=>{
+ // A same-origin HTTP fixture is required for exact canvas pixel reads.
+ // Chromium treats independent file:// images as opaque origins.
+ let server,viewerURL=process.env.ARMY2_VIEWER_URL;
+ if(!viewerURL){
+  const root=path.join(__dirname,'viewer');
+  server=http.createServer((req,res)=>{
+   const file=path.resolve(root,'.'+new URL(req.url,'http://127.0.0.1').pathname);
+   if(!file.startsWith(root+path.sep)){res.writeHead(404);res.end();return;}
+   fs.readFile(file,(error,bytes)=>{if(error){res.writeHead(404);res.end();return;}res.setHeader('Content-Type',file.endsWith('.js')?'text/javascript':file.endsWith('.html')?'text/html':file.endsWith('.png')?'image/png':'application/octet-stream');res.end(bytes);});
+  });
+  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));viewerURL='http://127.0.0.1:'+server.address().port+'/lobby.html';
+ }
  const browser=await chromium.launch({args:['--no-sandbox'],executablePath:process.env.ARMY2_CHROMIUM});
  const page=await browser.newPage({viewport:{width:432,height:660},deviceScaleFactor:2});
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
  await page.addInitScript(()=>{window.sent=[];window.profileDiagnostics=[];window.webkit={messageHandlers:{lobby:{postMessage:a=>a[0]==='profileDiagnostic'?profileDiagnostics.push(a[1]):sent.push(a)}}};});
- await page.goto(process.env.ARMY2_VIEWER_URL||pathToFileURL(path.join(__dirname,'viewer/lobby.html')).href);
+ await page.goto(viewerURL);
  await page.evaluate(()=>{const note=document.createElement('div');note.textContent='DỮ LIỆU KIỂM THỬ — KHÔNG PHẢI ACC THẬT';note.style.cssText='position:fixed;top:0;left:0;right:0;background:#173b58;color:white;text-align:center;font:12px sans-serif;padding:6px;pointer-events:none';document.body.append(note);});
  await page.evaluate(()=>{lobbyViewport(432,[432,0,0,0,0,0,0],602);openTab('field',0);});
  await page.evaluate(b=>receiveFrame(-120,b),encoded(board(1)));
@@ -139,6 +151,6 @@ assert.deepEqual(Profile.slots(sparse),[0,2,3,4]);assert.equal(Profile.move(spar
  });
  assert.deepEqual(catalogPixels.colors,[[...diamondColor,255],[...platinumColor,255]],'Catalog item IDs must select different server frames even at the same+16 level');
  assert.equal(catalogPixels.missing,false,'Missing catalog entries must not be replaced by avatar-body crops');
- assert.deepEqual(errors,[]);await browser.close();
+ assert.deepEqual(errors,[]);await browser.close();if(server)await new Promise(resolve=>server.close(resolve));
  console.log('PASS profile303: fresh targeted replies, synthetic Magenta+16 fixture, distinct diamond/platinum server PNGs and catalog frames at identical+16, no avatar-crop icon fallback, six worn/costume details/gems, full HP, native432 geometry, stale/wrong-account rejection, numeric-only icon diagnostics, changed gear, missing details and multiple viewport sizes; screenshots clearly marked TEST DATA');
 })().catch(e=>{console.error(e);process.exit(1);});
