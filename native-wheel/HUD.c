@@ -58,7 +58,10 @@ static GraphicsState save(uint8_t *g){GraphicsState s={.tx=g[0x50]?*(int *)(g+0x
 static void translate(void *e,uint8_t *g,int x,int y){((void (*)(void *,void *,int,int))(base()+0x1c619c))(e,g,x,y);}
 static void clip(void *e,uint8_t *g,int x,int y,int w,int h){((void (*)(void *,void *,int,int,int,int))(base()+0x1c6190))(e,g,x,y,w,h);}
 static void restore(void *e,uint8_t *g,GraphicsState s){translate(e,g,s.tx-(g[0x50]?*(int *)(g+0x48):0),s.ty-(g[0x50]?*(int *)(g+0x4c):0));clip(e,g,s.x-s.tx,s.y-s.ty,s.w,s.h);memcpy(g+0x28,s.color,16);}
-static void *font(void *e,int v){return ((void *(*)(void *))(base()+AGNotesMaps[v].font_get+0x3c))(e);}
+/* Native clinit binds fb1.png, height15, to +0xc0. +0xc8 is the
+   height21 title atlas and lacks the lowercase Vietnamese announcement set. */
+static const uintptr_t fontGetters[6]={0x5c10f0,0x6a9144,0x78de08,0x872acc,0x957790,0xa3c454};
+static void *font(void *e,int v){return ((void *(*)(void *))(base()+fontGetters[v]))(e);}
 /* PB1's font painter is 40 bytes longer. Width is a separate audited entry,
    not a fixed offset from the painter shared by the other five PBs. */
 static const uintptr_t fontWidths[6]={0x5c4054,0x6abe50,0x790b14,0x8757d8,0x95a49c,0xa3f160};
@@ -131,7 +134,12 @@ static int ranked(void *env,void *opaque){
 int AGRankPaintActor(void *env,uint8_t *p,uint8_t *g,int v,void (*native)(void *,void *,void *)){
  if(!env||!p||!g||!native||v<0||v>=6||*(int64_t *)(p+0x68)<=0||p[0x16f]==5)return 0;
  uint8_t *c=global(AGNotesMaps[v].canvas);uintptr_t owner=arena(v);if(!c||!owner||*(uintptr_t *)(c+0xb8)!=owner)return 0;
- uint8_t *a=roster(v);int slot=p[0x16b];if(at(a,slot)!=p)return 0;
+ /* Match NativeDragon105.slot in the APK: find the exact object in the
+    roster. +0x16b is actor metadata, not an authoritative roster index. */
+ uint8_t *a=roster(v);int count=a?*(int *)(a+0x10):0,slot=-1;
+ if(count<1||count>AGHUDSlots)return 0;
+ for(int i=0;i<count;i++)if(at(a,i)==p){slot=i;break;}
+ if(slot<0)return 0;
  pthread_mutex_lock(&lock);HUDState *s=state(v);if(s->arena&&s->arena!=owner)clearRanks(s);s->arena=owner;
  int rank=s->ranks[slot];if(s->actors[slot]&&s->actors[slot]!=(uintptr_t)p){rank=0;s->ranks[slot]=0;}if(rank&&!s->actors[slot])s->actors[slot]=(uintptr_t)p;
  RankPaint j={.p=p,.g=g,.v=v,.slot=slot,.rank=rank,.cap=s->caps[slot],.w=s->w[slot],.h=s->h[slot],.minX=1000000,.minY=1000000,.maxX=-1000000,.maxY=-1000000,.time=(uint64_t)(now()*1000),.native=native};

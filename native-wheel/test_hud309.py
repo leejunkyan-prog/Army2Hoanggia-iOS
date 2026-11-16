@@ -16,7 +16,7 @@ patched,_=patch_native(raw,t.blob)
 t.u.mem_write(t.B,patched[:26050560])
 for a,b in ((0x24f8000,0x2500000),(0x2500000,0x250c000)):
  t.u.mem_write(t.B+a,patched[offset(a):offset(b-1)+1])
-font_get=[0x5c112c,0x6a8f50,0x78dc14,0x8728d8,0x95759c,0xa3c260]
+font_get=[0x5c10f0,0x6a9144,0x78de08,0x872acc,0x957790,0xa3c454]
 font_draw=[0x5c3e64,0x6abc88,0x79094c,0x875610,0x95a2d4,0xa3ef98]
 font_width=[0x5c4054,0x6abe50,0x790b14,0x8757d8,0x95a49c,0xa3f160]
 for address in font_width:assert raw[address:address+44]==raw[font_width[0]:font_width[0]+44],'Width must enter the actual native method prologue'
