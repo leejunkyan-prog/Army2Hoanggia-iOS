@@ -53,6 +53,10 @@ calls[0x12e7d28]=intarray
 for v,callback in enumerate(callbacks):
  calls[services[v]]=lambda:t.ret(t.alloc(0x30))
  calls[branch_target(callback+0x284)]=send
+ # Each PB has its own generated item checkcast trampoline.
+ cast=branch_target(callback+0xdc)
+ assert branch_target(callback+0x1a4)==cast
+ calls[cast]=lambda:t.ret(t.reg(1))
 ranges=[(a,a+0x304) for a in callbacks]
 ranges += [(0x518210,0x537000),(0x5a791c,0x5a7978),
            (0x5a8e20,0x5a901c),(0x5ab9f8,0x5abb20),(0x591da4,0x591ec8)]
