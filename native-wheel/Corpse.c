@@ -12,6 +12,7 @@
 #include "Spectator.h"
 #include "CraftDiagnostics.h"
 #include "Inventory.h"
+#include "HUD.h"
 #include "Lobby.h"
 #include "Aura.h"
 #include "BossNative.h"
@@ -53,6 +54,7 @@ __attribute__((visibility("default"))) int AGCorpseReceive(void *env,void *messa
     if(!env||!message||v<0||v>=6)return 0;
     AGCraftReceive(message,v);
     AGInventoryReceive(message,v);
+    if(AGHUDReceive(env,message,v))return 1;
     AGInventoryPrepareRecipe(env,message,v);
     if(AGBossReceive(env,message,v))return 1;
     if(AGAuraReceive(env,message,v))return 1;
