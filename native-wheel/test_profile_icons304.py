@@ -80,4 +80,4 @@ for v in range(6):
     images[210+v]=picture;t.put(picture+0x20,'<i',129)
     assert t.call('_AGProfileIconRead',t.E,v,6,0,56,out)==0 and t.get(out,'<i')==4
 assert arrays==deleted and all(n==0 for n in t.pins.values())
-print('PASS native profile304: six AOT-audited catalogs, hero/slot/item lookup and exact native icon key, no ICON/atlas/own-account dependency, separate costume registry, original ARM64 Image.l RGBA copy, direct pixel arrays, bounded image size and balanced JNI references')
+print('PASS native profile icons: six AOT-audited catalogs, hero/slot/item lookup and exact native icon key, no ICON/atlas/own-account dependency, separate costume registry, RGBA pixel copy, direct pixel arrays, bounded image size and balanced JNI references')

@@ -74,7 +74,9 @@ def hook(_,pc,size,data):
  elif name=='_malloc':ret(alloc(reg(0)))
  elif name=='_calloc':ret(alloc(reg(0)*reg(1)))
  elif name=='_free':ret()
- elif name in ['_memcpy','_memmove']:u.mem_write(reg(0),bytes(u.mem_read(reg(1),reg(2))));ret(reg(0))
+ elif name in ['_memcpy','_memmove','___memcpy_chk']:
+  if name=='___memcpy_chk':assert reg(2)<=reg(3),'Native checked copy exceeds its destination'
+  u.mem_write(reg(0),bytes(u.mem_read(reg(1),reg(2))));ret(reg(0))
  elif name in ['_memset','_bzero']:
   u.mem_write(reg(0),bytes([reg(1)&255])*reg(2)if name=='_memset'else bytes(reg(1)));ret(reg(0))
  elif name=='_qsort':

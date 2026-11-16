@@ -175,7 +175,7 @@ window.lobbyRequestFailed=()=>{unlock();status('Chưa gửi được yêu cầu.
 function reportProfile(){
  if(closed||view!=='profile'||reply?.type!=='profile'||!profileTarget||reply.id!==profileTarget.id)return;
  const r=reply,items=Array.from({length:6},(_,i)=>ArmyProfile.item(r,i)),sources=items.map((p,i)=>p&&p.id>=0?ui.serverGearIconMetadata(r.avatar.character,i,p.id,r.icons?.[i]):{kind:0,frame:-1});
- const data={requested_id:r.id,rank:r.rank,serial:field.pending,hero:r.avatar.character,level:r.level,abilities:r.abilities,
+ const data={requested_id:r.id,rank:r.rank,serial:field.pending,hero:r.avatar.character,visual_ids:r.avatar.parts,level:r.level,abilities:r.abilities,
   item_ids:items.map(p=>p?.id??-1),upgrades:items.map(p=>p?.upgrade??0),tiers:items.map(p=>p?.tier??0),
   has_details:items.map((_,i)=>r.details?.[i]?1:0),flat:items.map((_,i)=>r.details?.[i]?.flat||[]),percent:items.map((_,i)=>r.details?.[i]?.percent||[]),
   gem_counts:items.map((_,i)=>r.gems?.[i]?.length||0),icon_bytes:items.map((_,i)=>r.icons?.[i]?.length||0),

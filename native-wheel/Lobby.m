@@ -71,7 +71,7 @@ static id AGProfileNumber(id value,int depth){
 static void AGSaveProfileDiagnostic(AGLobby *panel,NSDictionary *input){
     if(panel.tab!=AGLobbyField||panel.closing)return;
     NSMutableDictionary *fields=[NSMutableDictionary dictionary];
-    for(NSString *key in @[@"requested_id",@"rank",@"serial",@"hero",@"level",@"abilities",@"item_ids",@"upgrades",@"tiers",
+    for(NSString *key in @[@"requested_id",@"rank",@"serial",@"hero",@"visual_ids",@"level",@"abilities",@"item_ids",@"upgrades",@"tiers",
         @"has_details",@"flat",@"percent",@"gem_counts",@"icon_bytes",@"icon_sources",@"catalog_frames",@"atlas_width",@"atlas_height",@"native_icon_ids",@"native_icon_status",@"native_avatar_status"]){
         id n=AGProfileNumber(input[key],0);if(n)fields[key]=n;
     }
