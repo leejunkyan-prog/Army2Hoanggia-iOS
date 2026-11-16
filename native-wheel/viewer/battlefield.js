@@ -42,7 +42,7 @@ function readGearAtlas(bytes){
     return {frames,png};
 }
 class ArmyBattlefield {
-    constructor(){this.serial=0;this.pending=0;this.board=[];this.matches=[];this.playback=null;}
+    constructor(){this.serial=0;this.pending=0;this.profileTarget=null;this.board=[];this.matches=[];this.playback=null;}
     request(op,target,page=0){
         if(![1,2,3,4,5,6].includes(op))throw Error('Thao tác Chiến trường');
         if((op===2||op===3)&&!this.board.some(row=>row.id===target.id&&row.rank===target.rank))throw Error('Hãy cập nhật bảng hạng');
@@ -56,6 +56,7 @@ class ArmyBattlefield {
             if(!match)throw Error('Hãy cập nhật danh sách trận');
             for(const b of match.key)w.byte(b);
         }
+        this.profileTarget=op===2?{id:target.id,rank:target.rank,name:target.name,serial}:null;
         this.pending=serial;return w.bytes;
     }
     playbackFinished(){
@@ -89,16 +90,19 @@ class ArmyBattlefield {
             r.end();this.board=board;return {type:'board',rank,id,board};
         }
         if(op===2){
+            const target=this.profileTarget;
+            if(!target||serial!==target.serial)return {type:'stale'};
             const rank=r.i32(),name=r.utf(),level=r.i32(),character=r.utf(),abilities=ints(r);
+            if(rank!==target.rank||name!==target.name)throw Error('Hạng đã thay đổi. Bấm cập nhật để chọn lại.');
             const items=Array.from({length:5},()=>gear(r));
             const avatar=look(r);
-            if(avatar.character>9||abilities.length<5)throw Error('Thông tin nhân vật không hợp lệ');
+            if(avatar.character>9||abilities.length!==5)throw Error('Thông tin nhân vật không hợp lệ');
             let display=null;
             if(r.u8()){
                 display={percent:r.u8(),xu:readWallet(r),luong:readWallet(r),aura:r.i32()};
                 if(r.u8())display.outfit=gear(r);
             }
-            const profile={type:'profile',rank,name,level,character,abilities,items,avatar,display,details:[],gems:[],icons:[]};
+            const profile={type:'profile',id:target.id,rank,name,level,character,abilities,items,avatar,display,details:[],gems:[],icons:[]};
             const seen=new Set();
             while(r.pos<bytes.length){
                 const section=r.i32();
@@ -106,6 +110,7 @@ class ArmyBattlefield {
                 seen.add(section);
                 if(section===0x44455448){
                     profile.details=Array.from({length:6},()=>r.u8()?{flat:ints(r),percent:ints(r),days:r.i32(),slots:r.u8()}:null);
+                    if(profile.details.some(d=>d&&(d.flat.length!==5||d.percent.length!==5)))throw Error('Chỉ số trang bị không hợp lệ');
                 }else if(section===0x47454d49){
                     profile.gems=Array.from({length:6},()=>{
                         const n=r.u8();
@@ -137,3 +142,4 @@ class ArmyBattlefield {
     }
 }
 if(typeof module!=='undefined')module.exports={ArmyBattlefield,readGearAtlas};
+

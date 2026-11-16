@@ -139,6 +139,7 @@ static int NLobbyAccount(void *env,void *context){
     uint8_t *(*get)(void *)=(void *)(NBase()+AGStatsMaps[job->variant].player);
     uint8_t *canvas=NCanvas(job->variant);
     job->account->canvasWidth=canvas?*(int *)(canvas+0x130):432;
+    job->account->canvasHeight=canvas?*(int *)(canvas+0x128):0;
     AGInventoryGeometry(job->variant,job->account->inventoryGeometry);
     uint8_t *player=get(env);
     if(!player||player[0xd9]>=10)return 0;

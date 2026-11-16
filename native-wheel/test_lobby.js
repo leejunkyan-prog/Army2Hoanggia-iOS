@@ -23,7 +23,7 @@ function item(out,i){out.utf('M:'+i).utf('Trang bị '+i).utf('Trang bị').byte
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
  await page.addInitScript(()=>{window.sent=[];window.webkit={messageHandlers:{lobby:{postMessage:a=>sent.push(a)}}};});
  async function open(name, character=-1, result=null){
-  await page.goto(pathToFileURL(path.join(__dirname,'viewer/lobby.html')).href);
+  await page.goto(process.env.ARMY2_VIEWER_URL||pathToFileURL(path.join(__dirname,'viewer/lobby.html')).href);
   await page.evaluate(([tab,hero,result])=>openTab(tab,hero,0,result),[name,character,result]);
  }
  const labels=()=>page.evaluate(()=>menuItems?.map(item=>item[0]));
@@ -70,7 +70,7 @@ function item(out,i){out.utf('M:'+i).utf('Trang bị '+i).utf('Trang bị').byte
  await page.waitForTimeout(150);await page.screenshot({path:path.join(root,'lobby-profile.png')});
  assert.deepEqual(await page.evaluate(()=>[view,reply.name]),['profile','striker']);
  assert.deepEqual(await page.evaluate(()=>reply.items.map(i=>[i.name,i.upgrade])),gearNames.map((n,i)=>[n,upgrades[i]]));
- await soft(-6);assert.deepEqual(await labels(),['Chi tiết']);await soft(-5);
+ await soft(-6);assert.deepEqual(await labels(),['Chi tiết','Chỉ số','Cập nhật']);await soft(-5);
  assert.equal(await page.evaluate(()=>modal.lines.includes('Ngọc 11')),true,'Equipment details preserve inserted gems');
  await page.evaluate(()=>{lobbyKey(-7);lobbyKey(-7);});
  assert.deepEqual(await page.evaluate(()=>[view,focus,closed]),['board',0,false]);

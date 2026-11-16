@@ -66,6 +66,18 @@ const PixelUI=(()=>{
   gearIcon(hero,slot,id,x,y,16,png);
  }
  function nativePixels(draw){g.save();const old=fontUnit;g.scale(1/nativeScale,1/nativeScale);fontUnit=1;try{return draw(450,canvas.height);}finally{fontUnit=old;g.restore();}}
+ function profileBackground(width,height){
+  rect(0,0,width,height,'#60cdf7');
+  sprite('cl1',Math.floor(width*.13),Math.floor(height*.17));sprite('cl2',Math.floor(width*.62),Math.floor(height*.25));sprite('cl3',Math.floor(width*.43),Math.floor(height*.40));
+  const travel=(frame/5)%(width+110);
+  sprite('miniballoon',Math.floor(width-travel),66);sprite('miniballoon',Math.floor(width+105-travel),94);
+  const ground=height-34;
+  for(const [px,h]of [[width*.10,84],[width*.17,57],[width*.43,64],[width*.70,78],[width*.77,48]]){
+   const x=Math.floor(px),top=ground-h;
+   for(let yy=top+31;yy<ground;yy+=21)sprite('a',x+26,yy);
+   sprite('b',x,top);
+  }
+ }
  function classicSize(width){if(Number.isInteger(width)&&width>=160&&width<=4096)classicWidth=width;}
  function classicPixels(draw){g.save();const old=fontUnit;g.scale(320/classicWidth,320/classicWidth);fontUnit=1;try{return draw(classicWidth,Math.round(height*classicWidth/320));}finally{fontUnit=old;g.restore();}}
  function classicFooter(width,height,left,center,right,onleft,oncenter,onright){const y=height-34;rect(0,y,width,34,'#c5d5ee');text(left,4,y+10,{max:width/3-8});text(center,width/2,y+10,{align:'center',max:width/3-8});text(right,width-4,y+10,{align:'right',max:width/3-8});zone(0,y,width/3,34,onleft);zone(width/3,y,width/3,34,oncenter);zone(width*2/3,y,width/3,34,onright);}
@@ -99,7 +111,7 @@ const PixelUI=(()=>{
   gearIcon(hero,slot,id,x,y,16,png,nativeIcon);
   if(upgrade>0)text('+'+upgrade,x+3,y-13,{color:'#fff',outline:true,max:30});
  }
- function marquee(value,x,y,width,color){g.save();g.beginPath();g.rect(x,y,width,16);g.clip();const span=textWidth(value)+16,offset=span>width?Math.floor(frame*.6)%span:0;text(value,x-offset,y+1,{color,max:10000});if(offset)text(value,x-offset+span,y+1,{color,max:10000});g.restore();}
+ function marquee(value,x,y,width,color,{center=false}={}){g.save();g.beginPath();g.rect(x,y,width,16);g.clip();const size=textWidth(value),span=size+16,offset=size>width?Math.floor(frame*.6)%span:0;const left=center&&size<=width?x+(width-size)/2:x;text(value,left-offset,y+1,{color,max:10000});if(offset)text(value,x-offset+span,y+1,{color,max:10000});g.restore();}
  function statsIcon(index,x,y){const im=image('ability');if(im.complete&&im.naturalWidth)g.drawImage(im,0,index*16,16,16,x,y,16,16);}
  const digits=['0111110/1100011/1100111/1101011/1110011/1100011/1100011/1100011/0111110','0011000/0111000/0011000/0011000/0011000/0011000/0011000/0011000/0111100','0111110/1100011/0000011/0000011/0001110/0110000/1100000/1100000/1111111','1111110/0000011/0000011/0000011/0011110/0000011/0000011/0000011/1111110','0000110/0001110/0011110/0110110/1100110/1111111/0000110/0000110/0000110','1111111/1100000/1100000/1111110/0000011/0000011/0000011/1100011/0111110','0011110/0110000/1100000/1100000/1111110/1100011/1100011/1100011/0111110','1111111/0000011/0000110/0001100/0011000/0011000/0011000/0011000/0011000','0111110/1100011/1100011/1100011/0111110/1100011/1100011/1100011/0111110','0111110/1100011/1100011/1100011/0111111/0000011/0000011/0000110/0111100'];
  const rankCache=new Map();
@@ -197,6 +209,7 @@ const PixelUI=(()=>{
  }
  function start(paint,{transparent=false}={}){cancelAnimationFrame(raf);let last=-1;function tick(now){const f=Math.floor(now/42);if(f!==last){last=f;frame=f;hits=[];if(transparent)g.clearRect(0,0,320,height);else sky();paint();}raf=requestAnimationFrame(tick);}raf=requestAnimationFrame(tick);}
  canvas.addEventListener('pointerup',e=>{const r=canvas.getBoundingClientRect(),x=(e.clientX-r.left)*320/r.width,y=(e.clientY-r.top)*height/r.height;for(let i=hits.length-1;i>=0;i--){const h=hits[i];if(x>=h.x&&x<h.x+h.w&&y>=h.y&&y<h.y+h.h){h.run?.();break;}}});
- return {g,classicSize,classicPixels,classicFooter,inventoryFrame,nativePixels,roundRect,equipmentFrame,equipmentItem,marquee,text,textWidth,wrapText,rect,sprite,avatar,aura,gear,gearIcon,setGearAtlas,statsIcon,rank,heading,panel,frameBox,stripedBox,bottomDialog,footer,menu,zone,start,get height(){return height;},get frame(){return frame;},canvas};
+ return {g,classicSize,classicPixels,classicFooter,inventoryFrame,nativePixels,profileBackground,roundRect,equipmentFrame,equipmentItem,marquee,text,textWidth,wrapText,rect,sprite,avatar,aura,gear,gearIcon,setGearAtlas,statsIcon,rank,heading,panel,frameBox,stripedBox,bottomDialog,footer,menu,zone,start,get height(){return height;},get frame(){return frame;},canvas};
 })();
+
 

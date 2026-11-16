@@ -122,7 +122,7 @@ static void openLobby(void *env,int variant,int tab,int outcome){
         }
     }
     AGLobbyAccount account={.character=-1,.xu=-1,.luong=-1};
-    if(tab==AGLobbyMarket)AGLobbyReadAccount(env,variant,&account);
+    AGLobbyReadAccount(env,variant,&account);
     dispatch_async(dispatch_get_main_queue(),^{
         AGLobby *lobby=[AGLobby new];
         lobby.variant=variant;lobby.connection=connection;lobby.tab=tab;
@@ -346,8 +346,8 @@ int AGLobbyReceive(void *env,void *message,int v){
     NSString *tab=self.tab==AGLobbyField?@"field":self.tab==AGLobbyMarket?@"market":@"event";
     AGLobbyAccount account=self.account;
     NSString *outcome=self.fieldResult==NoFieldResult?@"null":[NSString stringWithFormat:@"%d",self.fieldResult];
-    NSString *start=[NSString stringWithFormat:@"lobbyViewport(%d,[%d,%d,%d,%d,%d,%d,%d]);openTab('%@',%d,%u,%@);lobbyBalance('%lld','%lld')",
-                     account.canvasWidth,account.inventoryGeometry[0],account.inventoryGeometry[1],account.inventoryGeometry[2],account.inventoryGeometry[3],account.inventoryGeometry[4],account.inventoryGeometry[5],account.inventoryGeometry[6],tab,account.character,self.firstSerial,outcome,(long long)account.xu,(long long)account.luong];
+    NSString *start=[NSString stringWithFormat:@"lobbyViewport(%d,[%d,%d,%d,%d,%d,%d,%d],%d);openTab('%@',%d,%u,%@);lobbyBalance('%lld','%lld')",
+                     account.canvasWidth,account.inventoryGeometry[0],account.inventoryGeometry[1],account.inventoryGeometry[2],account.inventoryGeometry[3],account.inventoryGeometry[4],account.inventoryGeometry[5],account.inventoryGeometry[6],account.canvasHeight,tab,account.character,self.firstSerial,outcome,(long long)account.xu,(long long)account.luong];
     self.loaded=YES;
     [web evaluateJavaScript:start completionHandler:^(id value,NSError *error){if(error)[self close];}];
     if(self.tab==AGLobbyField){
@@ -412,5 +412,6 @@ int AGLobbyReceive(void *env,void *message,int v){
     }
 }
 @end
+
 
 
