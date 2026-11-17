@@ -1,0 +1,19 @@
+{
+  "passed": true,
+  "build": 313,
+  "base_sha256": "8a39193b9843365fd81b863fc8aa03db066d27d6da6e1f184771602d21fe55c2",
+  "ipa_sha256": "aa94f0799531686bdbb12a45b2b5b79bcc30a15052e54971c663be148e7d59cd",
+  "changed_files": [
+    "Payload/Army2Hoanggia.app/Army2Hoanggia",
+    "Payload/Army2Hoanggia.app/Info.plist"
+  ],
+  "framework312_sha256": "9700ac6601b2dd8afded97c67d67c49b62ec7ac71979609cded93f242fa90f06",
+  "all_other_entries_identical": true,
+  "linkedit_symbols_bindings_preserved": true,
+  "native_hook_cases": 151,
+  "inventory_interleavings": 12000,
+  "inventory_production_updates": 3600,
+  "original_projectile_updates": 43,
+  "native_initializers_checked": 6,
+  "physical_device_tested": false
+}
